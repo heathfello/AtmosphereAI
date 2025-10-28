@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atmosphere — UI</title>
+
+    <!-- Tailwind (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // tiny Tailwind tweak for nicer shadow
+      tailwind.config = {
+        theme: {
+          extend: {
+            boxShadow: {
+              glow: "0 10px 30px rgba(0,0,0,.35)",
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- React 18 + ReactDOM (CDN) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel so we can write JSX in this single file -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      /* Background: deep indigo -> purple with a vignette */
+      body {
+        background: radial-gradient(1200px 700px at 20% -10%, rgba(120,119,198,.20), transparent 60%),
+                    radial-gradient(900px 600px at 90% 10%, rgba(147,51,234,.18), transparent 60%),
+                    linear-gradient(180deg, #0b0b12 0%, #111019 60%, #12101a 100%);
+      }
+      /* Frosted glass surface */
+      .glass { background: rgba(255,255,255,.06); backdrop-filter: blur(10px); }
+      .glass-strong { background: rgba(20,20,30,.6); backdrop-filter: blur(14px); }
+      .hairline { border: 1px solid rgba(255,255,255,.10); }
+    </style>
+  </head>
+  <body class="text-zinc-100">
+    <div id="root"></div>
+
+    <!-- App -->
+    <script type="text/babel">
+      const { useEffect, useMemo, useState } = React;
+
+      // ========= CONFIG =========
+      const BASE_URL = "http://127.0.0.1:8000";
+
+      const cx = (...xs) => xs.filter(Boolean).join(" ");
+
+      function useDebounce(value, delay = 400) {
+        const [v, setV] = useState(value);
+        useEffect(() => { const id = setTimeout(() => setV(value), delay); return () => clearTimeout(id); }, [value, delay]);
+        return v;
+      }
+
+      function useGeo(defaultLoc = { lat: 43.659, lng: -70.256 }) {
+        const [loc, setLoc] = useState(defaultLoc);
+        const [status, setStatus] = useState("idle");
+        useEffect(() => {
+          if (!navigator.geolocation) return;
+          setStatus("requesting");
+          navigator.geolocation.getCurrentPosition(
+            (pos) => { setLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setStatus("ok"); },
+            () => setStatus("denied"),
+            { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 }
+          );
+        }, []);
+        return { loc, status };
+      }
+
+      function Pill({ active, children, onClick }) {
+        return (
+          <button
+            onClick={onClick}
+            className={cx(
+              "px-3 py-1 rounded-full text-sm transition border",
+              active
+                ? "bg-white text-zinc-900 border-white shadow"
+                : "glass hairline text-zinc-200 hover:bg-white/10"
+            )}
+          >
+            {children}
+          </button>
+        );
+      }
+
+      function TopBar({ tab, setTab }) {
+        return (
+          <div className="sticky top-0 z-20 w-full glass-strong hairline backdrop-blur-md">
+            <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+              <div className="text-xl font-semibold tracking-wide">Atmosphere</div>
+              <div className="ml-auto flex gap-2">
+                {[
+                  ["discover", "Discover"],
+                  ["map", "Map"],
+                  ["personal", "Personalized"],
+                  ["favorites", "Favorites"],
+                ].map(([k, label]) => (
+                  <Pill key={k} active={tab === k} onClick={() => setTab(k)}>{label}</Pill>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function VenueCard({ v, onOpen }) {
+        const distanceKm = v._distance_km ?? null;
+        return (
+          <div
+            onClick={() => onOpen(v)}
+            className="cursor-pointer rounded-2xl overflow-hidden glass hairline shadow-glow hover:shadow-lg transition"
+          >
+            <div className="aspect-[16/9] w-full bg-zinc-900">
+              {v.cover_img_url
+                ? <img src={v.cover_img_url} alt={v.name} className="w-full h-full object-cover" />
+                : <div className="w-full h-full grid place-items-center text-zinc-500 text-sm">no photo</div>}
+            </div>
+            <div className="p-3 grid gap-1">
+              <div className="flex items-center gap-2">
+                <div className="font-medium truncate">{v.name}</div>
+                <div className="ml-auto text-xs text-zinc-400">
+                  {distanceKm ? `${distanceKm.toFixed(1)} km` : null}
+                </div>
+              </div>
+              <div className="text-xs text-zinc-400 truncate">{v.address}</div>
+              <div className="text-xs text-violet-300">{v.vibes || "—"}</div>
+            </div>
+          </div>
+        );
+      }
+
+      function Stars({ value = 0 }) {
+        const n = Math.round(value);
+        return (
+          <div className="flex gap-1 text-amber-400" aria-label={`rating ${n}/5`}>
+            {Array.from({ length: 5 }).map((_, i) => <span key={i}>{i < n ? "★" : "☆"}</span>)}
+          </div>
+        );
+      }
+
+      function VenueSheet({ venue, onClose }) {
+        const [detail, setDetail] = useState(null);
+        const [liking, setLiking] = useState(false);
+
+        useEffect(() => {
+          if (!venue) return;
+          fetch(`${BASE_URL}/venues/${encodeURIComponent(venue.id)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then(setDetail)
+            .catch(() => {});
+        }, [venue]);
+
+        if (!venue) return null;
+        const v = detail || venue;
+
+        async function rate(swipe) {
+          try {
+            setLiking(true);
+            await fetch(`${BASE_URL}/ratings`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user: "heath", venue_id: v.id, swipe }),
+            });
+          } finally {
+            setTimeout(() => setLiking(false), 400);
+          }
+        }
+
+        return (
+          <div className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm grid place-items-end">
+            <div className="w-full max-w-2xl h-[90vh] glass-strong hairline rounded-t-3xl overflow-auto">
+              <div className="p-3 flex items-center gap-2 border-b border-white/10">
+                <button onClick={onClose} className="px-3 py-1 rounded-full glass hairline">Close</button>
+                <div className="ml-auto flex gap-2">
+                  <button onClick={() => rate("up")} disabled={liking}
+                          className="px-3 py-1 rounded-full bg-emerald-500 text-zinc-900 font-medium">
+                    Like
+                  </button>
+                  <button onClick={() => rate("down")} disabled={liking}
+                          className="px-3 py-1 rounded-full bg-zinc-800 text-white">
+                    Pass
+                  </button>
+                </div>
+              </div>
+
+              <div className="aspect-[16/9] w-full bg-zinc-900">
+                {v.cover_img_url
+                  ? <img src={v.cover_img_url} alt={v.name} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full grid place-items-center text-zinc-500">no image</div>}
+              </div>
+
+              <div className="p-4 grid gap-3">
+                <div className="flex items-start gap-3">
+                  <div>
+                    <div className="text-xl font-semibold">{v.name}</div>
+                    <div className="text-sm text-zinc-300">{v.address}</div>
+                  </div>
+                  <div className="ml-auto"><Stars value={4} /></div>
+                </div>
+
+                <div className="text-sm text-zinc-200">
+                  <span className="font-medium text-violet-300">Atmosphere AI Summary:</span>
+                  {" "}
+                  {v.summary || "Cozy neighborhood spot with friendly staff and relaxed vibe."}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="p-3 rounded-xl glass hairline">Type: {v.source || "google"}</div>
+                  <div className="p-3 rounded-xl glass hairline">Vibes: {v.vibes || "—"}</div>
+                </div>
+
+                <a className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-zinc-900 w-max"
+                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.name + " " + v.address)}`}
+                   target="_blank" rel="noreferrer">Open in Maps</a>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function Discover() {
+        const { loc } = useGeo();
+        const [query, setQuery] = useState("cafe");
+        const [km, setKm] = useState(5);
+        const [items, setItems] = useState([]);
+        const [loading, setLoading] = useState(false);
+        const [error, setError] = useState("");
+        const [sheet, setSheet] = useState(null);
+        const debouncedQ = useDebounce(query);
+
+        useEffect(() => {
+          (async () => {
+            setLoading(true); setError("");
+            try {
+              const url = new URL(`${BASE_URL}/discover`);
+              url.searchParams.set("q", debouncedQ || "cafe");
+              url.searchParams.set("lat", String(loc.lat));
+              url.searchParams.set("lng", String(loc.lng));
+              url.searchParams.set("radius_m", String(km * 1000));
+              url.searchParams.set("limit", "24");
+              const r = await fetch(url);
+              if (!r.ok) throw new Error(`${r.status}`);
+              const data = await r.json();
+              setItems(Array.isArray(data) ? data : []);
+            } catch {
+              setError("Failed to load venues. Is your FastAPI running on 127.0.0.1:8000?");
+            } finally {
+              setLoading(false);
+            }
+          })();
+        }, [debouncedQ, km, loc.lat, loc.lng]);
+
+        return (
+          <div className="max-w-5xl mx-auto p-4">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Try: cafe, brunch, ramen, pizza"
+                className="px-4 py-2 rounded-full glass hairline w-80 placeholder:text-zinc-400 outline-none"
+              />
+              <select value={km} onChange={(e) => setKm(Number(e.target.value))}
+                      className="px-3 py-2 rounded-full glass hairline outline-none">
+                {[1,2,5,10,20].map((n) => <option key={n} value={n}>{n} km</option>)}
+              </select>
+              {loading && <div className="text-sm text-zinc-400">Loading…</div>}
+              {error && <div className="text-sm text-rose-300">{error}</div>}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {items.map((v) => <VenueCard key={v.id} v={v} onOpen={setSheet} />)}
+            </div>
+
+            <VenueSheet venue={sheet} onClose={() => setSheet(null)} />
+          </div>
+        );
+      }
+
+      function SimpleMap() {
+        const { loc } = useGeo();
+        const [zoom, setZoom] = useState(13);
+        const mapSrc = useMemo(() => {
+          const q = `${loc.lat},${loc.lng}`;
+          return `https://maps.googleapis.com/maps/api/staticmap?center=${q}&zoom=${zoom}&size=800x400&markers=color:red%7C${q}`;
+        }, [loc, zoom]);
+
+        return (
+          <div className="max-w-5xl mx-auto p-4 grid gap-3">
+            <div className="flex items-center gap-2">
+              <div className="font-medium">Nearby</div>
+              <input type="range" min={10} max={17} value={zoom}
+                     onChange={(e)=>setZoom(Number(e.target.value))} />
+              <a className="ml-auto px-3 py-1 rounded-full bg-white text-zinc-900"
+                 href={`https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`}
+                 target="_blank" rel="noreferrer">Open full map</a>
+            </div>
+            <img alt="map" className="w-full rounded-2xl hairline glass"
+                 src={mapSrc + "&key=YOUR_GOOGLE_MAPS_KEY_OPTIONAL"} />
+            <div className="text-sm text-zinc-400">Swap this static map for Leaflet/Mapbox later.</div>
+          </div>
+        );
+      }
+
+      function Personalized() {
+        const { loc } = useGeo();
+        const [mood, setMood] = useState("Study");
+        const [distance, setDistance] = useState(5);
+        const [loading, setLoading] = useState(false);
+        const [results, setResults] = useState([]);
+
+        async function submit() {
+          setLoading(true);
+          try {
+            const url = new URL(`${BASE_URL}/discover`);
+            url.searchParams.set("q", `${mood} cafe`);
+            url.searchParams.set("lat", String(loc.lat));
+            url.searchParams.set("lng", String(loc.lng));
+            url.searchParams.set("radius_m", String(distance * 1000));
+            url.searchParams.set("limit", "18");
+            const r = await fetch(url);
+            const data = await r.json();
+            setResults(Array.isArray(data) ? data : []);
+          } finally { setLoading(false); }
+        }
+
+        return (
+          <div className="max-w-3xl mx-auto p-4 grid gap-4">
+            <div className="rounded-2xl glass hairline p-4">
+              <div className="text-lg font-medium mb-2">Personalize</div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <select value={mood} onChange={(e)=>setMood(e.target.value)}
+                        className="px-3 py-2 rounded-xl glass hairline">
+                  {["Study","Date Night","Hanging Out","Brunch","Quiet","Trendy"].map(x => <option key={x}>{x}</option>)}
+                </select>
+                <input type="number" min={1} max={30} value={distance}
+                       onChange={(e)=>setDistance(Number(e.target.value))}
+                       className="px-3 py-2 rounded-xl glass hairline" />
+                <button onClick={submit} className="rounded-xl bg-white text-zinc-900 px-4">Search</button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="text-sm text-zinc-400">Finding places…</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {results.map(v => <VenueCard key={v.id} v={v} onOpen={()=>{}} />)}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function App() {
+        const [tab, setTab] = useState("discover");
+        return (
+          <div className="min-h-screen">
+            <TopBar tab={tab} setTab={setTab} />
+            {tab === "discover" && <Discover />}
+            {tab === "map" && <SimpleMap />}
+            {tab === "personal" && <Personalized />}
+            {tab === "favorites" && (
+              <div className="max-w-5xl mx-auto p-4 text-sm text-zinc-300">Favorites coming soon…</div>
+            )}
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
