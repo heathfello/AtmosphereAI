@@ -1,0 +1,229 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Atmosphere Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0b0c10; --card:#15171e; --text:#e8ecf1; --muted:#9aa5b1; --accent:#5eead4; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; background:var(--bg); color:var(--text); }
+    header { padding:16px 22px; border-bottom:1px solid #1f2330; position:sticky; top:0; background:rgba(11,12,16,.85); backdrop-filter:saturate(140%) blur(6px); }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+    input, button, select { padding:10px 12px; border-radius:10px; border:1px solid #2a2f3d; background:#0f1117; color:var(--text); }
+    input:focus, select:focus { outline:2px solid #334155; }
+    button { background:#1e293b; cursor:pointer; border:1px solid #334155; }
+    button.primary { background:#0e766e; border-color:#0e766e; }
+    button.ghost { background:#0f1117; }
+    main { padding:18px; max-width:1100px; margin:0 auto; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px; }
+    .card { background:var(--card); border:1px solid #22283a; border-radius:16px; overflow:hidden; box-shadow: 0 8px 24px rgba(0,0,0,.25);}
+    .card img { width:100%; height:170px; object-fit:cover; background:#0f1117; }
+    .card .pad { padding:12px 14px; }
+    .title { font-weight:700; margin-bottom:6px; }
+    .muted { color:var(--muted); font-size:13px; }
+    .row-between { display:flex; justify-content:space-between; align-items:center; gap:8px;}
+    .chip { font-size:12px; padding:4px 8px; border-radius:999px; background:#0f172a; border:1px solid #263047; color:#b6c2d0; }
+    .likes { display:flex; gap:8px; align-items:center; }
+    .likebtn { border-radius:10px; padding:6px 8px; border:1px solid #2b3346; background:#111422; cursor:pointer; }
+    .likebtn[data-type="up"] { border-color:#0e766e; }
+    .likebtn[data-type="down"] { border-color:#7f1d1d; }
+    .bar { margin:10px 0 0; height:6px; background:#0f1117; border:1px solid #263047; border-radius:999px; overflow:hidden;}
+    .fill { height:100%; background:linear-gradient(90deg, #10b981, #22d3ee); width:0; }
+    .help { margin-top:8px; font-size:12px; color:#a3aab8; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <input id="keyword" placeholder="what (e.g., cafe, ramen, quiet)" value="cafe" />
+      <input id="where" placeholder="where (e.g., Portland, ME) — optional" value="Portland, ME" />
+      <input id="lat" placeholder="lat (optional)" style="width:120px" />
+      <input id="lng" placeholder="lng (optional)" style="width:120px" />
+      <select id="radius">
+        <option value="1000">1 km</option>
+        <option value="2000" selected>2 km</option>
+        <option value="3000">3 km</option>
+        <option value="5000">5 km</option>
+      </select>
+      <button id="go" class="primary">Discover</button>
+      <button id="seeVenues" class="ghost" title="Show what’s currently saved in the DB">Saved Venues</button>
+    </div>
+    <div class="help">Tip: fill <b>where</b> (e.g., “Portland, ME”) or provide precise <b>lat/lng</b>. This calls your FastAPI at <code>http://127.0.0.1:8000</code>.</div>
+  </header>
+
+  <main>
+    <div id="status" class="muted" style="margin:8px 0 14px;"></div>
+    <div id="grid" class="grid"></div>
+  </main>
+
+  <script>
+    const API = "http://127.0.0.1:8000";
+
+    const $ = (id) => document.getElementById(id);
+    const statusEl = $("status");
+    const grid = $("grid");
+
+    $("go").onclick = async () => {
+      const keyword = $("keyword").value.trim() || "cafe";
+      const where = $("where").value.trim();
+      const lat = $("lat").value.trim();
+      const lng = $("lng").value.trim();
+      const radius = $("radius").value;
+
+      let url = new URL(API + "/discover");
+      url.searchParams.set("q", keyword);
+      url.searchParams.set("radius_m", radius);
+      if (where) url.searchParams.set("where", where);
+      if (lat) url.searchParams.set("lat", lat);
+      if (lng) url.searchParams.set("lng", lng);
+
+      statusEl.textContent = "Searching…";
+      try {
+        const r = await fetch(url);
+        const data = await r.json();
+        if (Array.isArray(data)) {
+          statusEl.textContent = `Found ${data.length} places`;
+          renderCards(data, { showDistance: true, origin: {lat: +lat || null, lng: +lng || null} });
+        } else {
+          statusEl.textContent = JSON.stringify(data, null, 2);
+          grid.innerHTML = "";
+        }
+      } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+        grid.innerHTML = "";
+      }
+    };
+
+    $("seeVenues").onclick = async () => {
+      statusEl.textContent = "Loading saved venues…";
+      try {
+        const r = await fetch(API + "/venues?limit=50");
+        const data = await r.json();
+        statusEl.textContent = `Saved venues: ${data.length}`;
+        renderCards(data, { showDistance:false });
+      } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+        grid.innerHTML = "";
+      }
+    };
+
+    function renderCards(items, opts) {
+      grid.innerHTML = "";
+      for (const v of items) grid.appendChild(card(v, opts));
+    }
+
+    function card(v, {showDistance, origin}) {
+      const el = document.createElement("div");
+      el.className = "card";
+
+      const img = document.createElement("img");
+      img.src = v.cover_img_url || "";
+      img.alt = v.name || "photo";
+      el.appendChild(img);
+
+      const pad = document.createElement("div");
+      pad.className = "pad";
+      el.appendChild(pad);
+
+      const top = document.createElement("div");
+      top.className = "row-between";
+      pad.appendChild(top);
+
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = v.name || "(unnamed)";
+      top.appendChild(title);
+
+      const src = document.createElement("span");
+      src.className = "chip";
+      src.textContent = v.source || "local";
+      top.appendChild(src);
+
+      const addr = document.createElement("div");
+      addr.className = "muted";
+      addr.textContent = v.address || "—";
+      pad.appendChild(addr);
+
+      if (showDistance && v.lat != null && v.lng != null && origin && origin.lat != null && origin.lng != null) {
+        const km = haversineKm(origin.lat, origin.lng, v.lat, v.lng);
+        const d = document.createElement("div");
+        d.className = "muted";
+        d.textContent = `${km.toFixed(2)} km away`;
+        pad.appendChild(d);
+      }
+
+      // ratings row
+      const row = document.createElement("div");
+      row.className = "row-between";
+      row.style.marginTop = "10px";
+      pad.appendChild(row);
+
+      const likes = document.createElement("div");
+      likes.className = "likes muted";
+      likes.innerHTML = `<span id="lk-${v.id}">👍 0</span> <span id="dk-${v.id}">👎 0</span>`;
+      row.appendChild(likes);
+
+      const btns = document.createElement("div");
+      row.appendChild(btns);
+
+      const up = document.createElement("button");
+      up.className = "likebtn";
+      up.dataset.type = "up";
+      up.textContent = "👍 Like";
+      up.onclick = () => rate(v.id, "up").then(() => refreshVenueRating(v.id));
+      btns.appendChild(up);
+
+      const down = document.createElement("button");
+      down.className = "likebtn";
+      down.dataset.type = "down";
+      down.style.marginLeft = "6px";
+      down.textContent = "👎 Dislike";
+      down.onclick = () => rate(v.id, "down").then(() => refreshVenueRating(v.id));
+      btns.appendChild(down);
+
+      // bar
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.innerHTML = `<div id="fill-${v.id}" class="fill"></div>`;
+      pad.appendChild(bar);
+
+      // initial rating pull
+      refreshVenueRating(v.id);
+
+      return el;
+    }
+
+    async function refreshVenueRating(venueId) {
+      try {
+        const r = await fetch(`${API}/venues/${encodeURIComponent(venueId)}/ratings`);
+        if (!r.ok) return;
+        const j = await r.json();
+        const up = j.likes || 0, down = j.dislikes || 0, total = up + down;
+        const likeEl = document.getElementById(`lk-${venueId}`);
+        const dislikeEl = document.getElementById(`dk-${venueId}`);
+        const fill = document.getElementById(`fill-${venueId}`);
+        if (likeEl) likeEl.textContent = `👍 ${up}`;
+        if (dislikeEl) dislikeEl.textContent = `👎 ${down}`;
+        if (fill) fill.style.width = total ? `${Math.round((up/total)*100)}%` : "0%";
+      } catch {}
+    }
+
+    async function rate(venueId, swipe) {
+      try {
+        await fetch(API + "/ratings", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ user: "heath", venue_id: venueId, swipe })
+        });
+      } catch (e) { alert("rate error: " + e.message); }
+    }
+
+    function haversineKm(lat1,lng1,lat2,lng2){
+      const R=6371, toRad=(d)=>d*Math.PI/180;
+      const dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+      const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+      return 2*R*Math.asin(Math.sqrt(a));
+    }
+  </script>
+</body>
+</html>
