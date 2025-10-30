@@ -7,15 +7,36 @@ from dotenv import load_dotenv
 from requests import RequestException
 import requests
 import os
+from pydantic import BaseModel
 
 load_dotenv()  # load .env so GOOGLE_PLACES_KEY/DATABASE_URL are available
+
+# ---------- Atmosphere API models for FE ----------
+class AtmoReview(BaseModel):
+    author: str | None = None
+    rating: float | None = None
+    text: str | None = None
+
+class AtmoPlace(BaseModel):
+    id: str
+    name: str
+    address: str | None = None
+    google_rating: float | None = None
+    photos: list[str] = []
+    tags: list[str] = []
+    summary: str | None = None
+    source_count: int | None = 0
+    reviews: list[AtmoReview] = []
+
+class AtmoPlacesResp(BaseModel):
+    places: list[AtmoPlace]
 
 # ---- DB ----
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///atmosphere.db")
 connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
 engine = create_engine(DB_URL, echo=False, connect_args=connect_args)
 
-# ---- Models ----
+# ---- SQLModel tables ----
 class Venue(SQLModel, table=True):
     id: str = Field(primary_key=True)          # can be Google place_id
     name: str
@@ -37,7 +58,8 @@ class Rating(SQLModel, table=True):
 
 # ---- App ----
 app = FastAPI(title="Atmosphere API", version="0.1.0")
-from fastapi.middleware.cors import CORSMiddleware
+
+# single CORS is enough
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -45,15 +67,9 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5500",
         "http://localhost:5500",
+        "*",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-# CORS so web/mobile can call this API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -66,6 +82,7 @@ def on_startup():
 def health():
     return {"ok": True}
 
+# ------------- existing venue endpoints -------------
 @app.get("/venues", response_model=List[Venue])
 def list_venues(q: Optional[str] = None, limit: int = 25, offset: int = 0):
     with Session(engine) as s:
@@ -73,9 +90,9 @@ def list_venues(q: Optional[str] = None, limit: int = 25, offset: int = 0):
         if q:
             like = f"%{q.lower()}%"
             stmt = stmt.where(
-                Venue.vibes.ilike(like) |
-                Venue.name.ilike(like) |
-                Venue.summary.ilike(like)
+                Venue.vibes.ilike(like)
+                | Venue.name.ilike(like)
+                | Venue.summary.ilike(like)
             )
         return s.exec(stmt.limit(limit).offset(offset)).all()
 
@@ -104,7 +121,7 @@ def rating_summary():
         downs = s.exec(select(Rating).where(Rating.swipe == "down")).all()
         return {"likes": len(ups), "dislikes": len(downs)}
 
-# ---------- Google Places discovery ----------
+# ---------- Google Places helper ----------
 def upsert_venue_from_google(obj: dict) -> Venue:
     place_id = obj.get("place_id")
     name = obj.get("name", "")
@@ -148,6 +165,7 @@ def upsert_venue_from_google(obj: dict) -> Venue:
         s.refresh(v)
         return v
 
+# ------------- your original discover -------------
 @app.get("/discover", response_model=List[Venue])
 def discover(
     q: str = "cafe",            # e.g., "cafe" or "restaurant"
@@ -177,18 +195,114 @@ def discover(
 
     status = data.get("status")
     if status != "OK":
-        # Surface the reason (e.g., REQUEST_DENIED, ZERO_RESULTS, OVER_QUERY_LIMIT)
         raise HTTPException(status_code=400, detail={"status": status, "error": data.get("error_message")})
 
     results = data.get("results", [])[:limit]
 
-    # Upsert into our DB and return the rows
     out: List[Venue] = []
     for obj in results:
         try:
             out.append(upsert_venue_from_google(obj))
         except Exception as e:
-            # Don't crash the whole request if a single row fails
             print("upsert error:", e)
 
     return out
+
+# ------------- NEW: frontend-friendly /places -------------
+@app.get("/places", response_model=AtmoPlacesResp)
+def get_places(
+    lat: float,
+    lng: float,
+    radius: int = 5000,
+    q: str = "",
+    limit: int = 20,
+):
+    """
+    Returns data in the exact shape the Atmosphere frontend expects.
+    """
+    api_key = os.getenv("GOOGLE_PLACES_KEY")
+
+    # if we don't have a Google key, just send DB rows in that shape
+    if not api_key:
+        with Session(engine) as s:
+            rows = s.exec(select(Venue).limit(limit)).all()
+        return AtmoPlacesResp(
+            places=[
+                AtmoPlace(
+                    id=v.id,
+                    name=v.name,
+                    address=v.address,
+                    google_rating=None,
+                    photos=[v.cover_img_url] if v.cover_img_url else [],
+                    tags=[t.strip() for t in (v.vibes or "").split(",") if t.strip()],
+                    summary=v.summary or None,
+                    source_count=1,
+                    reviews=[],
+                )
+                for v in rows
+            ]
+        )
+
+    # call Google Nearby
+    url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+    params = {
+        "key": api_key,
+        "location": f"{lat},{lng}",
+        "radius": radius,
+        "keyword": q or "cafe restaurant coffee",
+    }
+
+    try:
+        r = requests.get(url, params=params, timeout=12)
+        r.raise_for_status()
+        data = r.json()
+    except RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Places request failed: {e}")
+
+    status = data.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(status_code=400, detail={"status": status, "error": data.get("error_message")})
+
+    results = data.get("results", [])[:limit]
+
+    out_places: list[AtmoPlace] = []
+    for obj in results:
+        place_id = obj.get("place_id")
+        name = obj.get("name")
+        address = obj.get("vicinity") or obj.get("formatted_address")
+        rating = obj.get("rating")
+        types = obj.get("types") or []
+
+        # ✅ MULTI-PHOTO LOGIC
+        photos = obj.get("photos") or []
+        photo_urls: list[str] = []
+        if photos:
+            for p in photos[:5]:  # take up to 5 photos
+                pref = p.get("photo_reference")
+                if pref:
+                    photo_urls.append(
+                        "https://maps.googleapis.com/maps/api/place/photo"
+                        f"?maxwidth=1600&photoreference={pref}&key={api_key}"
+                    )
+
+        # optional: keep your DB warm
+        try:
+            upsert_venue_from_google(obj)
+        except Exception:
+            pass
+
+        out_places.append(
+            AtmoPlace(
+                id=place_id,
+                name=name,
+                address=address,
+                google_rating=rating,
+                photos=photo_urls,
+                tags=[t.replace("_", " ") for t in types[:3]],
+                summary=None,   # fill later
+                source_count=len(types),
+                reviews=[],     # fill later w/ place details
+            )
+        )
+
+    return AtmoPlacesResp(places=out_places)
