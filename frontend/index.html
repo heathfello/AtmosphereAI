@@ -106,6 +106,31 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
       }
+      /* simple gallery */
+      .hero-wrap { position: relative; overflow: hidden; border-radius: 1.5rem; }
+      .hero-wrap img { width: 100%; height: 100%; object-fit: contain; display:block; }
+      .hero-16x9 { aspect-ratio: 16 / 9; max-height: min(52vh, 560px); width: 100%; }
+      .thumb { height: 6.5rem; width: 11rem; border-radius: 1rem; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); background: rgba(15,23,42,.25); cursor: pointer; }
+      .thumb img { width: 100%; height: 100%; object-fit: contain; display:block; }
+      .thumb.selected { outline: 2px solid rgba(94,234,212,.8); outline-offset: 0; }
+      /* carousel */
+      .carousel { display:flex; gap: 0; overflow-x:auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+      .carousel::-webkit-scrollbar { display:none; }
+      .slide { flex: 0 0 100%; scroll-snap-align: center; display:flex; align-items:center; justify-content:center; background: rgba(2,6,23,.35); }
+      .slide img { max-height: min(52vh, 560px); width: auto; height: auto; object-fit: contain; display:block; }
+      .nav-btn { position:absolute; top:50%; transform: translateY(-50%); width:40px; height:40px; border-radius:999px; background: rgba(2,6,23,.6); border:1px solid rgba(255,255,255,.12); color:#e2e8f0; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+      .nav-btn:hover { background: rgba(2,6,23,.8); }
+      .nav-prev { left: 10px; }
+      .nav-next { right: 10px; }
+      /* hero container */
+      .hero-container { padding-top: .25rem; margin-bottom: 1rem; }
+      /* details */
+      .section-title { font-size: 10px; letter-spacing: .35em; text-transform: uppercase; color: #94a3b8; }
+      .detail-row { display:flex; align-items:flex-start; gap:.75rem; padding:.5rem 0; border-bottom:1px solid rgba(255,255,255,.05); }
+      .detail-row:last-child { border-bottom: none; }
+      .detail-icon { width:1.5rem; height:1.5rem; display:flex; align-items:center; justify-content:center; border-radius:.5rem; background: rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.15); }
+      .action-btn { display:inline-flex; align-items:center; gap:.4rem; border:1px solid rgba(148,163,184,0.2); background: rgba(2,6,23,.4); color:#e2e8f0; padding:.5rem .7rem; border-radius:999px; font-size:12px; }
+      
     </style>
   </head>
   <body class="relative pb-32">
@@ -226,18 +251,18 @@
       <div class="flex h-[calc(100%-3.5rem)] flex-col gap-4 overflow-y-auto px-6 pb-6 pt-3">
         <p class="text-[10px] uppercase tracking-[0.35em] text-slate-400">Atmosphere card</p>
 
-        <!-- hero -->
-        <div id="sheet-hero" class="relative h-52 overflow-hidden rounded-3xl bg-slate-900/40 md:h-60"></div>
-
-        <!-- scrollable gallery -->
-        <div class="relative">
-          <div
-            id="sheet-gallery"
-            class="flex gap-4 overflow-x-auto pb-2 pt-1 hide-scrollbar scroll-smooth"
-          ></div>
-          <div
-            class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#05070b]/100 to-transparent rounded-br-3xl"
-          ></div>
+        <!-- hero + gallery -->
+        <div class="hero-container">
+          <div id="sheet-hero" class="hero-wrap hero-16x9 bg-slate-900/40"></div>
+          <div class="relative mt-3">
+            <div
+              id="sheet-gallery"
+              class="flex gap-4 overflow-x-auto pb-2 pt-1 hide-scrollbar scroll-smooth"
+            ></div>
+            <div
+              class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#05070b]/100 to-transparent rounded-br-3xl"
+            ></div>
+          </div>
         </div>
 
         <div>
@@ -265,6 +290,15 @@
         <p id="sheet-summary" class="text-sm leading-relaxed text-slate-200">
           Neutral spot — atmosphere depends on time of day. Good for casual meetups and solo coffee.
         </p>
+
+        
+
+        <!-- details -->
+        <div class="space-y-3 rounded-2xl bg-white/[0.02] px-4 py-4">
+          <p class="section-title">Details</p>
+          <div id="detail-rows" class="space-y-0.5"></div>
+          <div id="detail-actions" class="mt-2 flex flex-wrap gap-2"></div>
+        </div>
 
         <div class="flex gap-3">
           <button
@@ -375,26 +409,100 @@
       backdrop.addEventListener("click", closeSheet);
 
       function openSheet(v) {
-        // hero
-        const mainPhoto =
-          (v.photos && v.photos[0]) ||
-          "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=60";
-        sheetHero.innerHTML = `
-          <img src="${mainPhoto}" class="h-full w-full object-cover" alt="${v.name}" />
-        `;
+        // photos
+        const fallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=60";
+        let photos = (v.photos && v.photos.length ? [...v.photos] : [fallback]);
+        let currentIdx = 0;
+        let carousel, prevBtn, nextBtn;
 
-        // scrollable gallery
-        sheetGallery.innerHTML = "";
-        const galleryPhotos =
-          v.photos && v.photos.length > 1 ? v.photos : [mainPhoto, mainPhoto, mainPhoto];
+        const scrollToIdx = (idx, behavior = "smooth") => {
+          if (!carousel) return;
+          const slideWidth = carousel.clientWidth;
+          carousel.scrollTo({ left: slideWidth * idx, behavior });
+        };
 
-        galleryPhotos.forEach((p, idx) => {
-          const frame = document.createElement("div");
-          frame.className =
-            "h-28 md:h-32 w-44 md:w-52 flex-shrink-0 rounded-2xl overflow-hidden bg-slate-900/25 border border-white/5";
-          frame.innerHTML = `<img src="${p}" class="h-full w-full object-cover" alt="${v.name} ${idx + 1}" />`;
-          sheetGallery.appendChild(frame);
-        });
+        const renderHero = () => {
+          const slides = photos
+            .map((src) => `<div class="slide"><img src="${src}" alt="${v.name}" /></div>`) 
+            .join("");
+          sheetHero.innerHTML = `
+            <div class="carousel" id="sheet-carousel">${slides}</div>
+            <button class="nav-btn nav-prev" id="nav-prev" aria-label="Previous">‹</button>
+            <button class="nav-btn nav-next" id="nav-next" aria-label="Next">›</button>
+          `;
+
+          carousel = document.getElementById("sheet-carousel");
+          prevBtn = document.getElementById("nav-prev");
+          nextBtn = document.getElementById("nav-next");
+
+          // initial position (instant)
+          scrollToIdx(currentIdx, "auto");
+
+          prevBtn.onclick = () => {
+            currentIdx = Math.max(0, currentIdx - 1);
+            scrollToIdx(currentIdx, "smooth");
+            renderThumbs();
+          };
+          nextBtn.onclick = () => {
+            currentIdx = Math.min(photos.length - 1, currentIdx + 1);
+            scrollToIdx(currentIdx, "smooth");
+            renderThumbs();
+          };
+
+          // update index on manual scroll
+          carousel.addEventListener("scroll", () => {
+            const idx = Math.round(carousel.scrollLeft / carousel.clientWidth);
+            if (idx !== currentIdx) {
+              currentIdx = idx;
+              renderThumbs();
+            }
+          });
+
+          // keyboard navigation when sheet is open
+          const onKey = (e) => {
+            if (e.key === "ArrowLeft") prevBtn.click();
+            if (e.key === "ArrowRight") nextBtn.click();
+          };
+          document.addEventListener("keydown", onKey, { once: true });
+        };
+
+        const renderThumbs = () => {
+          sheetGallery.innerHTML = "";
+          photos.forEach((p, idx) => {
+            const t = document.createElement("div");
+            t.className = `thumb flex-shrink-0 ${idx === currentIdx ? "selected" : ""}`;
+            t.innerHTML = `<img src="${p}" alt="${v.name} ${idx + 1}" />`;
+            t.addEventListener("click", () => {
+              currentIdx = idx;
+              scrollToIdx(currentIdx, "auto"); // instant snap on thumbnail click
+              renderThumbs();
+            });
+            sheetGallery.appendChild(t);
+          });
+        };
+
+        renderHero();
+        renderThumbs();
+
+        // try to fetch extra photos via backend Place Details
+        fetch(`${BASE_URL}/places/${encodeURIComponent(v.id)}/photos`)
+          .then(r => (r.ok ? r.json() : { photos: [] }))
+          .then(j => {
+            if (j && Array.isArray(j.photos) && j.photos.length) {
+              // merge unique photos keeping order; avoid duplicates
+              const existing = new Set(photos);
+              const extras = j.photos.filter(p => !existing.has(p));
+              if (extras.length) {
+                photos = [...photos, ...extras];
+                // re-render with new photos; keep currentIdx stable
+                renderHero();
+                renderThumbs();
+                // maintain scroll position after adding new photos
+                scrollToIdx(currentIdx, "auto");
+              }
+            }
+          })
+          .catch(() => {});
 
         // text
         sheetName.textContent = v.name;
@@ -407,6 +515,45 @@
         sheetGoogle.textContent = v.google_rating ? `${v.google_rating.toFixed(1)}★` : "—";
         sheetSources.textContent = `+${v.source_count || (v.reviews ? v.reviews.length : 0) || 1} signals`;
         sheetBest.textContent = (v.tags && v.tags.slice(0, 2).join(", ")) || "Good vibe";
+
+        // details builder
+        const detailRows = document.getElementById("detail-rows");
+        const detailActions = document.getElementById("detail-actions");
+        const rows = [];
+        // Address
+        if (v.address) {
+          const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${v.name} ${v.address}`)}`;
+          rows.push({ icon:"📍", label: "Address", value: v.address, link: mapsLink, linkText: "Open in Maps" });
+        }
+        // Categories from tags
+        if (v.tags && v.tags.length) {
+          rows.push({ icon:"🏷️", label: "Categories", value: v.tags.join(", ") });
+        }
+        // Price (placeholder if missing)
+        rows.push({ icon:"💲", label: "Price", value: v.price || "—" });
+        // Rating source
+        if (v.google_rating) {
+          rows.push({ icon:"⭐", label: "Google Rating", value: `${v.google_rating.toFixed(1)}★` });
+        }
+
+        // Render rows
+        detailRows.innerHTML = rows
+          .map(r => {
+            const link = r.link ? `<a href="${r.link}" target="_blank" class="text-cyan-300 hover:underline">${r.linkText || "Open"}</a>` : "";
+            return `<div class="detail-row">
+              <div class="detail-icon">${r.icon}</div>
+              <div class="text-sm">
+                <div class="text-slate-400">${r.label}</div>
+                <div class="text-slate-200">${r.value} ${link ? `• ${link}` : ""}</div>
+              </div>
+            </div>`;
+          })
+          .join("");
+
+        // Action buttons (if available on object later)
+        detailActions.innerHTML = "";
+        if (v.website) detailActions.innerHTML += `<a class="action-btn" href="${v.website}" target="_blank">🔗 Website</a>`;
+        if (v.phone) detailActions.innerHTML += `<a class="action-btn" href="tel:${v.phone}">📞 Call</a>`;
 
         // tags + review chips
         sheetTags.innerHTML = (v.tags || [])

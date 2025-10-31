@@ -9,6 +9,8 @@ import requests
 import os
 from pydantic import BaseModel
 
+ 
+
 load_dotenv()  # load .env so GOOGLE_PLACES_KEY/DATABASE_URL are available
 
 # ---------- Atmosphere API models for FE ----------
@@ -306,3 +308,37 @@ def get_places(
         )
 
     return AtmoPlacesResp(places=out_places)
+ 
+@app.get("/places/{place_id}/photos")
+def get_place_photos(place_id: str, max_photos: int = 10):
+    """Return multiple photo URLs for a place via Google Place Details."""
+    api_key = os.getenv("GOOGLE_PLACES_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Set GOOGLE_PLACES_KEY in your .env")
+
+    url = "https://maps.googleapis.com/maps/api/place/details/json"
+    params = {
+        "key": api_key,
+        "place_id": place_id,
+        "fields": "photos"
+    }
+    try:
+        r = requests.get(url, params=params, timeout=12)
+        r.raise_for_status()
+        data = r.json()
+    except RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Place details failed: {e}")
+
+    if data.get("status") != "OK":
+        return {"photos": []}
+
+    photos = (data.get("result") or {}).get("photos") or []
+    out = []
+    for p in photos[:max_photos]:
+        pref = p.get("photo_reference") or p.get("photoreference")
+        if pref:
+            out.append(
+                "https://maps.googleapis.com/maps/api/place/photo"
+                f"?maxwidth=1600&photoreference={pref}&key={api_key}"
+            )
+    return {"photos": out}
