@@ -29,6 +29,8 @@ class AtmoPlace(BaseModel):
     summary: str | None = None
     source_count: int | None = 0
     reviews: list[AtmoReview] = []
+    lat: float | None = None
+    lng: float | None = None
 
 class AtmoPlacesResp(BaseModel):
     places: list[AtmoPlace]
@@ -210,6 +212,19 @@ def discover(
 
     return out
 
+# Map filter names to Google Places API types
+# Using 'type' parameter is more accurate than 'keyword' for finding places by category
+FILTER_TYPE_MAP = {
+    "coffee": "cafe",
+    "pizza": "meal_takeaway",  # Will include pizza places
+    "burgers": "restaurant",
+    "sushi": "restaurant",
+    "mexican": "restaurant",
+    "italian": "restaurant",
+    "seafood": "restaurant",
+    "asian": "restaurant",
+}
+
 # ------------- NEW: frontend-friendly /places -------------
 @app.get("/places", response_model=AtmoPlacesResp)
 def get_places(
@@ -240,6 +255,8 @@ def get_places(
                     summary=v.summary or None,
                     source_count=1,
                     reviews=[],
+                    lat=v.lat,
+                    lng=v.lng,
                 )
                 for v in rows
             ]
@@ -251,21 +268,94 @@ def get_places(
         "key": api_key,
         "location": f"{lat},{lng}",
         "radius": radius,
-        "keyword": q or "cafe restaurant coffee",
     }
-
-    try:
-        r = requests.get(url, params=params, timeout=12)
-        r.raise_for_status()
-        data = r.json()
-    except RequestException as e:
-        raise HTTPException(status_code=502, detail=f"Places request failed: {e}")
-
-    status = data.get("status")
-    if status not in ("OK", "ZERO_RESULTS"):
-        raise HTTPException(status_code=400, detail={"status": status, "error": data.get("error_message")})
-
-    results = data.get("results", [])[:limit]
+    
+    # Use 'type' parameter for specific filters, 'keyword' for general searches
+    query_lower = q.lower().strip()
+    if query_lower == "coffee":
+        # For coffee: search both cafes AND restaurants to find all places that serve coffee
+        # We'll make two API calls and combine results
+        all_results = []
+        
+        # First: get all cafes (type: "cafe")
+        cafe_params = params.copy()
+        cafe_params["type"] = "cafe"
+        try:
+            r1 = requests.get(url, params=cafe_params, timeout=12)
+            r1.raise_for_status()
+            cafe_data = r1.json()
+            if cafe_data.get("status") == "OK":
+                all_results.extend(cafe_data.get("results", []))
+        except RequestException:
+            pass  # Continue even if one fails
+        
+        # Second: get restaurants with "coffee" keyword (type: "restaurant" + keyword)
+        restaurant_params = params.copy()
+        restaurant_params["type"] = "restaurant"
+        restaurant_params["keyword"] = "coffee"
+        try:
+            r2 = requests.get(url, params=restaurant_params, timeout=12)
+            r2.raise_for_status()
+            restaurant_data = r2.json()
+            if restaurant_data.get("status") == "OK":
+                all_results.extend(restaurant_data.get("results", []))
+        except RequestException:
+            pass
+        
+        # Remove duplicates by place_id
+        seen_ids = set()
+        unique_results = []
+        for result in all_results:
+            place_id = result.get("place_id")
+            if place_id and place_id not in seen_ids:
+                seen_ids.add(place_id)
+                unique_results.append(result)
+        
+        results = unique_results[:limit]
+        status = "OK" if results else "ZERO_RESULTS"
+        
+    elif query_lower in FILTER_TYPE_MAP:
+        # For other category filters: use restaurant type with keyword
+        params["type"] = "restaurant"
+        params["keyword"] = q
+        try:
+            r = requests.get(url, params=params, timeout=12)
+            r.raise_for_status()
+            data = r.json()
+        except RequestException as e:
+            raise HTTPException(status_code=502, detail=f"Places request failed: {e}")
+        status = data.get("status")
+        if status not in ("OK", "ZERO_RESULTS"):
+            raise HTTPException(status_code=400, detail={"status": status, "error": data.get("error_message")})
+        results = data.get("results", [])[:limit]
+        
+    elif query_lower == "all" or not q:
+        # Default: show restaurants
+        params["type"] = "restaurant"
+        try:
+            r = requests.get(url, params=params, timeout=12)
+            r.raise_for_status()
+            data = r.json()
+        except RequestException as e:
+            raise HTTPException(status_code=502, detail=f"Places request failed: {e}")
+        status = data.get("status")
+        if status not in ("OK", "ZERO_RESULTS"):
+            raise HTTPException(status_code=400, detail={"status": status, "error": data.get("error_message")})
+        results = data.get("results", [])[:limit]
+    else:
+        # General search: use keyword with restaurant type
+        params["type"] = "restaurant"
+        params["keyword"] = q
+        try:
+            r = requests.get(url, params=params, timeout=12)
+            r.raise_for_status()
+            data = r.json()
+        except RequestException as e:
+            raise HTTPException(status_code=502, detail=f"Places request failed: {e}")
+        status = data.get("status")
+        if status not in ("OK", "ZERO_RESULTS"):
+            raise HTTPException(status_code=400, detail={"status": status, "error": data.get("error_message")})
+        results = data.get("results", [])[:limit]
 
     out_places: list[AtmoPlace] = []
     for obj in results:
@@ -293,6 +383,12 @@ def get_places(
         except Exception:
             pass
 
+        # Get lat/lng from geometry
+        geometry = obj.get("geometry") or {}
+        location = geometry.get("location") or {}
+        lat = location.get("lat")
+        lng = location.get("lng")
+        
         out_places.append(
             AtmoPlace(
                 id=place_id,
@@ -304,11 +400,21 @@ def get_places(
                 summary=None,   # fill later
                 source_count=len(types),
                 reviews=[],     # fill later w/ place details
+                lat=lat,
+                lng=lng,
             )
         )
 
     return AtmoPlacesResp(places=out_places)
  
+@app.get("/config/maps-key")
+def get_maps_key():
+    """Return Google Maps API key for frontend use."""
+    api_key = os.getenv("GOOGLE_PLACES_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_PLACES_KEY not set")
+    return {"maps_key": api_key}
+
 @app.get("/places/{place_id}/photos")
 def get_place_photos(place_id: str, max_photos: int = 10):
     """Return multiple photo URLs for a place via Google Place Details."""

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Atmosphere — see inside, feel the vibe</title>
+    <title>Atmosphere — a new way to view your favorite restaurants</title>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <!-- tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -20,24 +20,19 @@
     <style>
       body {
         min-height: 100vh;
-        background:
-          radial-gradient(circle at 80% 20%, rgba(80, 66, 132, 0.22), rgba(6, 8, 12, 0) 38%),
-          radial-gradient(circle at 10% 90%, rgba(46, 82, 120, 0.13), rgba(5, 7, 11, 0) 46%),
-          linear-gradient(160deg, #05070b 0%, #05070b 35%, #0b0f16 100%);
-        color: #e2e8f0;
+        background: 
+          radial-gradient(ellipse at top left, rgba(200, 245, 255, 0.9), transparent 50%),
+          radial-gradient(ellipse at top right, rgba(245, 220, 240, 0.8), transparent 50%),
+          radial-gradient(ellipse at bottom, rgba(195, 235, 245, 0.85), transparent 60%),
+          linear-gradient(135deg, #e0f2fe 0%, #f3e8ff 50%, #dcfce7 100%);
+        background-attachment: fixed;
+        color: #1a1a1a;
       }
       body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background-image: url("https://grainy-gradients.vercel.app/noise.svg");
-        opacity: 0.12;
-        mix-blend-mode: soft-light;
-        z-index: 0;
+        display: none;
       }
       .text-gradient-arrive {
-        background: linear-gradient(90deg, #a855f7 0%, #22d3ee 50%, #94f597 100%);
+        background: linear-gradient(90deg, #a855f7 0%, #22d3ee 50%, #65d67b 100%);
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
@@ -63,39 +58,84 @@
         pointer-events: none;
       }
       #atmo-backdrop.show {
-        opacity: 0.35;
+        opacity: 1;
         pointer-events: auto;
       }
-      .atmo-orb {
+      #list-modal {
+        display: flex;
+      }
+      #list-modal.hidden {
+        display: none;
+      }
+      /* Loading animation */
+      #loading-overlay {
         position: fixed;
-        top: 55%;
-        right: 8%;
-        width: 420px;
-        height: 420px;
-        pointer-events: none;
-        z-index: 1;
-        opacity: 0.12;
-        filter: drop-shadow(0 12px 55px rgba(0, 0, 0, 0.35));
-        transform-origin: center;
-      }
-      .atmo-orb::before {
-        content: "";
-        position: absolute;
         inset: 0;
-        border-radius: 9999px;
-        background-image: radial-gradient(circle, rgba(255, 255, 255, 0.7) 0 1px, transparent 1px);
-        background-size: 20px 20px;
-        animation: atmoPulse 4.5s ease-in-out infinite;
+        z-index: 9999;
+        background: linear-gradient(135deg, #e0f2fe 0%, #f3e8ff 50%, #dcfce7 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.5s ease, visibility 0.5s ease;
       }
-      @keyframes atmoPulse {
-        0%,
-        100% {
-          transform: scale(1);
-          opacity: 0.12;
+      #loading-overlay.hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .planet-loader {
+        width: 85px;
+        height: 85px;
+        position: relative;
+        perspective: 300px;
+      }
+      .rings-container {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        transform-style: preserve-3d;
+      }
+      .ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 72px;
+        height: 72px;
+        border: 2.5px solid #1a1a1a;
+        border-radius: 50%;
+        transform-origin: center;
+        margin: -36px 0 0 -36px;
+      }
+      .ring-outer {
+        animation: rotate-outer 3s cubic-bezier(0.1, 0, 0.7, 1) infinite;
+      }
+      .ring-inner-1 {
+        animation: rotate-inner-1-combined 4.5s cubic-bezier(0.1, 0, 0.7, 1) infinite;
+      }
+      .ring-inner-2 {
+        animation: rotate-inner-2-combined 5.5s cubic-bezier(0.1, 0, 0.7, 1) infinite reverse;
+      }
+      @keyframes rotate-outer {
+        0% {
+          transform: rotateZ(0deg);
         }
-        50% {
-          transform: scale(1.08);
-          opacity: 0.22;
+        100% {
+          transform: rotateZ(360deg);
+        }
+      }
+      @keyframes rotate-inner-1-combined {
+        0% {
+          transform: rotateX(60deg) rotateY(0deg) rotateZ(0deg);
+        }
+        100% {
+          transform: rotateX(60deg) rotateY(360deg) rotateZ(360deg);
+        }
+      }
+      @keyframes rotate-inner-2-combined {
+        0% {
+          transform: rotateX(-60deg) rotateY(60deg) rotateZ(0deg);
+        }
+        100% {
+          transform: rotateX(-60deg) rotateY(420deg) rotateZ(360deg);
         }
       }
       /* hide horizontal scrollbar on webkit */
@@ -110,84 +150,215 @@
       .hero-wrap { position: relative; overflow: hidden; border-radius: 1.5rem; }
       .hero-wrap img { width: 100%; height: 100%; object-fit: contain; display:block; }
       .hero-16x9 { aspect-ratio: 16 / 9; max-height: min(52vh, 560px); width: 100%; }
-      .thumb { height: 6.5rem; width: 11rem; border-radius: 1rem; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); background: rgba(15,23,42,.25); cursor: pointer; }
+      .thumb { height: 6.5rem; width: 11rem; border-radius: 1rem; overflow: hidden; border: 1px solid #e5e7eb; background: #f9fafb; cursor: pointer; }
       .thumb img { width: 100%; height: 100%; object-fit: contain; display:block; }
-      .thumb.selected { outline: 2px solid rgba(94,234,212,.8); outline-offset: 0; }
+      .thumb.selected { outline: 2px solid #059669; outline-offset: 0; }
       /* carousel */
       .carousel { display:flex; gap: 0; overflow-x:auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
       .carousel::-webkit-scrollbar { display:none; }
-      .slide { flex: 0 0 100%; scroll-snap-align: center; display:flex; align-items:center; justify-content:center; background: rgba(2,6,23,.35); }
+      .slide { flex: 0 0 100%; scroll-snap-align: center; display:flex; align-items:center; justify-content:center; background: #f9fafb; }
       .slide img { max-height: min(52vh, 560px); width: auto; height: auto; object-fit: contain; display:block; }
-      .nav-btn { position:absolute; top:50%; transform: translateY(-50%); width:40px; height:40px; border-radius:999px; background: rgba(2,6,23,.6); border:1px solid rgba(255,255,255,.12); color:#e2e8f0; display:flex; align-items:center; justify-content:center; cursor:pointer; }
-      .nav-btn:hover { background: rgba(2,6,23,.8); }
+      .nav-btn { position:absolute; top:50%; transform: translateY(-50%); width:40px; height:40px; border-radius:999px; background: white; border:1px solid #e5e7eb; color:#1a1a1a; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+      .nav-btn:hover { background: #f9fafb; }
       .nav-prev { left: 10px; }
       .nav-next { right: 10px; }
       /* hero container */
       .hero-container { padding-top: .25rem; margin-bottom: 1rem; }
       /* details */
-      .section-title { font-size: 10px; letter-spacing: .35em; text-transform: uppercase; color: #94a3b8; }
-      .detail-row { display:flex; align-items:flex-start; gap:.75rem; padding:.5rem 0; border-bottom:1px solid rgba(255,255,255,.05); }
+      .section-title { font-size: 10px; letter-spacing: .35em; text-transform: uppercase; color: #6b7280; }
+      .detail-row { display:flex; align-items:flex-start; gap:.75rem; padding:.5rem 0; border-bottom:1px solid #e5e7eb; }
       .detail-row:last-child { border-bottom: none; }
-      .detail-icon { width:1.5rem; height:1.5rem; display:flex; align-items:center; justify-content:center; border-radius:.5rem; background: rgba(148,163,184,0.08); border:1px solid rgba(148,163,184,0.15); }
-      .action-btn { display:inline-flex; align-items:center; gap:.4rem; border:1px solid rgba(148,163,184,0.2); background: rgba(2,6,23,.4); color:#e2e8f0; padding:.5rem .7rem; border-radius:999px; font-size:12px; }
+      .detail-icon { width:1.5rem; height:1.5rem; display:flex; align-items:center; justify-content:center; border-radius:.5rem; background: #f3f4f6; border:1px solid #e5e7eb; }
+      .action-btn { display:inline-flex; align-items:center; gap:.4rem; border:1px solid #d1d5db; background: white; color:#1a1a1a; padding:.5rem .7rem; border-radius:999px; font-size:12px; }
+      
+      /* landing page reveal animation */
+      .landing-content {
+        opacity: 0;
+        transform: translateY(20px) scale(0.99);
+        transition: opacity 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.15s,
+                    transform 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.15s;
+      }
+      .landing-content.reveal {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      
+      /* fade in header */
+      header {
+        opacity: 0;
+        transform: translateY(-15px);
+        transition: opacity 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.2s,
+                    transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.2s;
+      }
+      header.reveal {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      
+        /* browse vibes page */
+      .browse-page {
+        position: fixed;
+        inset: 0;
+        z-index: 90;
+        background: 
+          radial-gradient(ellipse at top left, rgba(200, 245, 255, 0.9), transparent 50%),
+          radial-gradient(ellipse at top right, rgba(245, 220, 240, 0.8), transparent 50%),
+          radial-gradient(ellipse at bottom, rgba(195, 235, 245, 0.85), transparent 60%),
+          linear-gradient(135deg, #e0f2fe 0%, #f3e8ff 50%, #dcfce7 100%);
+        background-attachment: fixed;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(30px) scale(0.98);
+        transition: opacity 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                    transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        overflow-y: auto;
+      }
+      .browse-page.show {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0) scale(1);
+      }
+      .browse-page::before {
+        display: none;
+      }
+      .food-option {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.5rem;
+        border-radius: 1.5rem;
+        border: 1px solid rgba(196, 181, 253, 0.3);
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(8px);
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      .food-option:hover {
+        background: rgba(255, 255, 255, 0.95);
+        border-color: rgba(196, 181, 253, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.1);
+      }
+      .food-option.selected {
+        background: rgba(250, 245, 255, 0.9);
+        border-color: rgba(167, 139, 250, 0.6);
+      }
+      
+      /* Map page styles */
+      #map-page {
+        display: flex;
+      }
+      #map-page.hidden {
+        display: none;
+      }
+      .map-filter-btn {
+        padding: 0.5rem 1rem;
+        border-radius: 9999px;
+        border: 1px solid #e5e7eb;
+        background: white;
+        color: #6b7280;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+      }
+      .map-filter-btn:hover {
+        background: #f9fafb;
+        border-color: #d1d5db;
+      }
+      .map-filter-btn.active {
+        background: #6366f1;
+        border-color: #6366f1;
+        color: white;
+      }
+      #map-container {
+        min-height: 0;
+      }
       
     </style>
   </head>
   <body class="relative pb-32">
-    <!-- orb -->
-    <div id="atmo-orb" class="atmo-orb"></div>
+    <!-- Loading overlay -->
+    <div id="loading-overlay">
+      <div class="planet-loader">
+        <div class="rings-container">
+          <!-- Outer ring (horizontal circle, front-facing) -->
+          <div class="ring ring-outer"></div>
+          
+          <!-- Inner ring 1 (tilted diagonal, rotated 60deg on X-axis) -->
+          <div class="ring ring-inner-1"></div>
+          
+          <!-- Inner ring 2 (tilted perpendicular, rotated -60deg on X and 60deg on Y) -->
+          <div class="ring ring-inner-2"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- top nav -->
-    <header class="sticky top-0 z-30 border-b border-white/5 bg-black/18 backdrop-blur-xl">
+    <header class="sticky top-0 z-30 border-b border-purple-100/50 bg-white/70 backdrop-blur-xl">
       <div class="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
         <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 ring-1 ring-white/10">
-            <img src="https://i.imgur.com/9t1S8Hk.png" alt="Atmosphere logo" class="h-9 w-9 object-contain" />
+          <div class="flex h-10 w-10 items-center justify-center">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Three interconnected rings logo - black for light background -->
+              
+              <!-- Outer ring (horizontal circle, front-facing) -->
+              <circle cx="16" cy="16" r="13" fill="none" stroke="#1a1a1a" stroke-width="1.5" />
+              
+              <!-- Inner ring 1 (tilted diagonal top-left to bottom-right) -->
+              <ellipse cx="16" cy="16" rx="13" ry="6.5" transform="rotate(60 16 16)" 
+                       fill="none" stroke="#1a1a1a" stroke-width="1.5" />
+              
+              <!-- Inner ring 2 (tilted diagonal top-right to bottom-left) -->
+              <ellipse cx="16" cy="16" rx="6.5" ry="13" transform="rotate(-60 16 16)" 
+                       fill="none" stroke="#1a1a1a" stroke-width="1.5" />
+            </svg>
           </div>
           <div>
-            <p class="text-sm font-semibold tracking-tight text-white">Atmosphere</p>
-            <p class="text-[11px] uppercase tracking-[0.30em] text-slate-400">
-              SEE INSIDE • FEEL THE VIBE • ARRIVE CONFIDENT
+            <p class="text-sm font-light tracking-wide text-gray-900" style="letter-spacing: 0.1em; font-weight: 300;">ATMOSPHERE</p>
+            <p class="text-[11px] uppercase tracking-[0.30em] text-gray-600">
+              A NEW WAY TO VIEW YOUR FAVORITE RESTAURANTS
             </p>
           </div>
         </div>
-        <nav class="ml-auto flex gap-2 rounded-full bg-white/5 p-1 text-xs">
-          <button class="rounded-full bg-white/15 px-4 py-1 text-white shadow">Discover</button>
-          <button class="rounded-full px-4 py-1 text-slate-200/70 hover:text-white">Map</button>
-          <button class="rounded-full px-4 py-1 text-slate-200/70 hover:text-white">Favorites</button>
+        <nav class="ml-auto flex gap-2 rounded-full bg-purple-50/60 p-1 text-xs backdrop-blur-sm">
+          <button id="nav-discover" class="rounded-full bg-white/90 px-4 py-1 text-gray-900 shadow-sm">Discover</button>
+          <button id="nav-map" class="rounded-full px-4 py-1 text-gray-600 hover:text-gray-900">Map</button>
+          <button class="rounded-full px-4 py-1 text-gray-600 hover:text-gray-900">Favorites</button>
         </nav>
       </div>
     </header>
 
-    <main class="relative z-10 mx-auto max-w-6xl gap-6 px-4 py-8">
+    <main class="landing-content relative z-10 mx-auto max-w-6xl gap-6 px-4 py-8">
       <!-- hero -->
       <section
-        class="relative flex flex-col gap-8 rounded-[36px] border border-white/4 bg-[radial-gradient(circle_at_20%_30%,rgba(157,148,255,0.12),rgba(2,6,23,0)_55%),linear-gradient(160deg,rgba(5,6,9,0.25),rgba(3,4,6,0.6))] p-8 shadow-[0_24px_70px_rgba(0,0,0,0.35)] md:flex-row"
+        class="relative flex flex-col gap-8 rounded-[36px] border border-purple-100/50 bg-gradient-to-br from-white via-purple-50/30 to-blue-50/40 p-8 shadow-sm md:flex-row"
       >
         <div class="flex-1 space-y-5">
           <p
-            class="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.35em] text-slate-200/80 ring-1 ring-white/10"
+            class="inline-flex items-center gap-2 rounded-full bg-purple-100/50 px-3 py-1 text-[10px] uppercase tracking-[0.35em] text-purple-700"
           >
             360° / 3D interiors
-            <span class="text-[9px] text-slate-400">for restaurants</span>
+            <span class="text-[9px] text-gray-500">for restaurants</span>
           </p>
-          <h1 class="text-5xl font-semibold leading-tight tracking-tight text-white md:text-5xl">
-            See inside.<br />
-            Feel the vibe.<br />
-            <span class="text-gradient-arrive">Arrive confident.</span>
+          <h1 class="text-5xl font-semibold leading-tight tracking-tight text-gray-900 md:text-5xl">
+            A new way to view<br />
+            <span class="text-gradient-arrive">your favorite restaurants.</span>
           </h1>
-          <p class="max-w-xl text-sm text-slate-200/80">
+          <p class="max-w-xl text-sm text-gray-700">
             Atmosphere lets restaurants fully control their online vibe — custom profiles, real interiors, AI vibe
             reads — and lets guests peek inside before they ever show up.
           </p>
           <div class="flex gap-3">
             <button
-              class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-medium text-white transition hover:bg-white/15"
+              id="browse-vibes-btn"
+              class="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-gray-900 px-5 py-2 text-sm font-medium text-white transition hover:bg-gray-800"
             >
               Browse vibes →
             </button>
             <button
-              class="inline-flex items-center gap-2 rounded-full bg-slate-900/50 px-5 py-2 text-sm font-medium text-slate-100 ring-1 ring-white/10 transition hover:bg-slate-900/70"
+              class="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-900 transition hover:bg-gray-50"
             >
               For restaurants
             </button>
@@ -196,33 +367,39 @@
 
         <!-- search -->
         <div class="w-full max-w-sm space-y-3 md:w-90">
-          <p class="text-[10px] uppercase tracking-[0.35em] text-slate-400">Quick search</p>
+          <p class="text-[10px] uppercase tracking-[0.35em] text-gray-600">Quick search</p>
           <div class="flex items-center gap-3">
             <div class="relative flex-1">
               <input
                 id="search-input"
                 type="text"
                 placeholder="cafe, brunch, restaurant…"
-                class="w-full rounded-full border border-white/10 bg-slate-950/25 px-4 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                class="w-full rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-200 transition-colors"
               />
-              <span class="pointer-events-none absolute right-4 top-2.5 text-[10px] text-slate-500">⌘K</span>
+              <span class="pointer-events-none absolute right-4 top-2.5 text-[10px] text-gray-400">⌘K</span>
             </div>
+            <button
+              id="search-btn"
+              class="rounded-full bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 whitespace-nowrap"
+            >
+              Search
+            </button>
             <select
               id="radius-select"
-              class="rounded-full border border-cyan/10 bg-slate-950/25 px-3 py-2 text-xs text-slate-200"
+              class="rounded-full border border-gray-300 bg-white px-3 py-2 text-xs text-gray-900"
             >
               <option value="2000">2 km</option>
               <option value="5000" selected>5 km</option>
               <option value="10000">10 km</option>
             </select>
           </div>
-          <p class="flex gap-4 text-[10px] uppercase tracking-[0.35em] text-slate-400">
+          <p class="flex gap-4 text-[10px] uppercase tracking-[0.35em] text-gray-500">
             <span>Lighting</span>
             <span>Crowd</span>
             <span>Music</span>
           </p>
-          <p id="result-count" class="text-[11px] text-slate-500">0 places found</p>
-          <p id="error-msg" class="text-[11px] text-orange-400"></p>
+          <p id="result-count" class="text-[11px] text-gray-600">0 places found</p>
+          <p id="error-msg" class="text-[11px] text-orange-500"></p>
         </div>
       </section>
 
@@ -230,71 +407,220 @@
       <section id="venue-list" class="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3"></section>
     </main>
 
+    <!-- browse vibes page -->
+    <div id="browse-page" class="browse-page">
+      <div class="relative z-10 mx-auto max-w-4xl px-4 py-12">
+        <button
+          id="browse-close"
+          class="mb-8 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
+        >
+          ←
+        </button>
+        <h2 class="mb-2 text-4xl font-semibold text-gray-900">What are you craving?</h2>
+        <p class="mb-8 text-gray-600">Select a food type to discover restaurants</p>
+        
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="food-option" data-food="pizza">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🍕 Pizza</h3>
+              <p class="mt-1 text-sm text-gray-600">Italian, American, Neapolitan</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="burgers">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🍔 Burgers</h3>
+              <p class="mt-1 text-sm text-gray-600">Classic, Gourmet, Fast Food</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="sushi">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🍣 Sushi</h3>
+              <p class="mt-1 text-sm text-gray-600">Japanese, Rolls, Sashimi</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="mexican">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🌮 Mexican</h3>
+              <p class="mt-1 text-sm text-gray-600">Tacos, Burritos, Authentic</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="italian">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🍝 Italian</h3>
+              <p class="mt-1 text-sm text-gray-600">Pasta, Risotto, Fine Dining</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="asian">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🥢 Asian</h3>
+              <p class="mt-1 text-sm text-gray-600">Chinese, Thai, Korean, Vietnamese</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="seafood">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🐟 Seafood</h3>
+              <p class="mt-1 text-sm text-gray-600">Fish, Lobster, Sushi, Grilled</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="steak">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🥩 Steakhouse</h3>
+              <p class="mt-1 text-sm text-gray-600">Prime Cuts, Grilled, Fine Dining</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="breakfast">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🥞 Breakfast</h3>
+              <p class="mt-1 text-sm text-gray-600">Pancakes, Waffles, Brunch</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="dessert">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🍰 Dessert</h3>
+              <p class="mt-1 text-sm text-gray-600">Ice Cream, Cakes, Pastries</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="coffee">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">☕ Coffee</h3>
+              <p class="mt-1 text-sm text-gray-600">Cafes, Espresso, Specialty</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+          
+          <div class="food-option" data-food="vegan">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">🌱 Vegan</h3>
+              <p class="mt-1 text-sm text-gray-600">Plant-based, Healthy, Organic</p>
+            </div>
+            <span class="text-gray-400">→</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Page -->
+    <div id="map-page" class="fixed inset-0 z-50 hidden flex flex-col bg-white">
+      <!-- Map Header -->
+      <div class="flex items-center justify-between border-b border-gray-200 bg-white/80 backdrop-blur-xl px-4 py-3">
+        <div class="flex items-center gap-3">
+          <button id="map-close" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition">
+            ←
+          </button>
+          <h2 class="text-lg font-semibold text-gray-900">Restaurant Map</h2>
+        </div>
+      </div>
+      
+      <!-- Filter Bar -->
+      <div class="border-b border-gray-200 bg-white px-4 py-3">
+        <div class="flex items-center gap-2 overflow-x-auto pb-2 hide-scrollbar">
+          <button class="map-filter-btn active" data-filter="all">All</button>
+          <button class="map-filter-btn" data-filter="pizza">Pizza</button>
+          <button class="map-filter-btn" data-filter="burgers">Burgers</button>
+          <button class="map-filter-btn" data-filter="sushi">Sushi</button>
+          <button class="map-filter-btn" data-filter="mexican">Mexican</button>
+          <button class="map-filter-btn" data-filter="italian">Italian</button>
+          <button class="map-filter-btn" data-filter="asian">Asian</button>
+          <button class="map-filter-btn" data-filter="coffee">Coffee</button>
+          <button class="map-filter-btn" data-filter="seafood">Seafood</button>
+        </div>
+      </div>
+      
+      <!-- Map Container -->
+      <div id="map-container" class="flex-1 w-full"></div>
+      
+      <!-- Map Info -->
+      <div class="border-t border-gray-200 bg-white px-4 py-3">
+        <p id="map-info" class="text-sm text-gray-600 text-center">
+          Showing nearby restaurants
+        </p>
+      </div>
+    </div>
+
     <!-- backdrop -->
-    <div id="atmo-backdrop" class="fixed inset-0 z-40 bg-black hidden"></div>
+    <div id="atmo-backdrop" class="fixed inset-0 z-40 bg-black/20 hidden"></div>
 
     <!-- bottom sheet -->
     <div
       id="atmo-sheet"
-      class="sheet sheet-hidden fixed inset-x-0 bottom-0 top-14 z-50 h-[calc(100vh-3.5rem)] w-full rounded-t-[40px] border border-white/5 bg-[#05070b]/97 backdrop-blur-2xl"
+      class="sheet sheet-hidden fixed inset-x-0 bottom-0 top-14 z-50 h-[calc(100vh-3.5rem)] w-full rounded-t-[40px] border border-purple-100/50 bg-gradient-to-b from-white via-purple-50/20 to-white shadow-lg backdrop-blur-sm"
     >
       <div class="flex items-center justify-between px-6 pt-3">
-        <div class="h-1.5 w-16 rounded-full bg-white/10"></div>
+        <div class="h-1.5 w-16 rounded-full bg-gray-300"></div>
         <button
           id="sheet-close"
-          class="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-slate-100 hover:bg-white/10"
+          class="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200"
         >
           ✕
         </button>
       </div>
 
       <div class="flex h-[calc(100%-3.5rem)] flex-col gap-4 overflow-y-auto px-6 pb-6 pt-3">
-        <p class="text-[10px] uppercase tracking-[0.35em] text-slate-400">Atmosphere card</p>
+        <p class="text-[10px] uppercase tracking-[0.35em] text-gray-500">Atmosphere card</p>
 
         <!-- hero + gallery -->
         <div class="hero-container">
-          <div id="sheet-hero" class="hero-wrap hero-16x9 bg-slate-900/40"></div>
+          <div id="sheet-hero" class="hero-wrap hero-16x9 bg-gray-100"></div>
           <div class="relative mt-3">
             <div
               id="sheet-gallery"
               class="flex gap-4 overflow-x-auto pb-2 pt-1 hide-scrollbar scroll-smooth"
             ></div>
             <div
-              class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#05070b]/100 to-transparent rounded-br-3xl"
+              class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-white to-transparent rounded-br-3xl"
             ></div>
           </div>
         </div>
 
         <div>
-          <h2 id="sheet-name" class="text-2xl font-semibold text-white">—</h2>
-          <p id="sheet-addr" class="text-xs text-slate-400">—</p>
+          <h2 id="sheet-name" class="text-2xl font-semibold text-gray-900">—</h2>
+          <p id="sheet-addr" class="text-xs text-gray-600">—</p>
         </div>
 
-        <div class="flex flex-wrap gap-4 rounded-2xl bg-white/[0.02] px-4 py-3 text-[11px] text-slate-200">
+        <div class="flex flex-wrap gap-4 rounded-2xl bg-gray-50 px-4 py-3 text-[11px] text-gray-700">
           <div class="flex flex-col">
-            <span class="text-slate-400">Google</span>
-            <span id="sheet-google" class="text-sm font-medium text-white">—</span>
+            <span class="text-gray-600">Google</span>
+            <span id="sheet-google" class="text-sm font-medium text-gray-900">—</span>
           </div>
-          <div class="h-9 w-px bg-white/5"></div>
+          <div class="h-9 w-px bg-gray-200"></div>
           <div class="flex flex-col">
-            <span class="text-slate-400">Source fusion</span>
-            <span id="sheet-sources" class="text-sm text-white">+0 signals</span>
+            <span class="text-gray-600">Source fusion</span>
+            <span id="sheet-sources" class="text-sm text-gray-900">+0 signals</span>
           </div>
-          <div class="h-9 w-px bg-white/5"></div>
+          <div class="h-9 w-px bg-gray-200"></div>
           <div class="flex flex-col">
-            <span class="text-slate-400">Best for</span>
-            <span id="sheet-best" class="text-sm text-white">—</span>
+            <span class="text-gray-600">Best for</span>
+            <span id="sheet-best" class="text-sm text-gray-900">—</span>
           </div>
         </div>
 
-        <p id="sheet-summary" class="text-sm leading-relaxed text-slate-200">
-          Neutral spot — atmosphere depends on time of day. Good for casual meetups and solo coffee.
+        <p id="sheet-summary" class="text-sm leading-relaxed text-gray-700" style="display: none;">
         </p>
 
         
 
         <!-- details -->
-        <div class="space-y-3 rounded-2xl bg-white/[0.02] px-4 py-4">
+        <div class="space-y-3 rounded-2xl bg-gradient-to-br from-purple-50/40 to-blue-50/30 px-4 py-4">
           <p class="section-title">Details</p>
           <div id="detail-rows" class="space-y-0.5"></div>
           <div id="detail-actions" class="mt-2 flex flex-wrap gap-2"></div>
@@ -303,19 +629,49 @@
         <div class="flex gap-3">
           <button
             id="sheet-like"
-            class="flex-1 rounded-full bg-emerald-400 px-4 py-2.5 text-sm font-medium text-slate-950 shadow hover:bg-emerald-300"
+            class="flex-1 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-600"
           >
-            👍 Like vibe
+            👍 Like
           </button>
           <button
-            id="sheet-pass"
-            class="flex-1 rounded-full bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-100 hover:bg-slate-800"
+            id="sheet-dislike"
+            class="flex-1 rounded-full bg-gray-200 px-4 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-300"
           >
-            👎 Pass
+            👎 Dislike
           </button>
         </div>
+        
+        <button
+          id="sheet-add-to-list"
+          class="mt-3 w-full rounded-full border-2 border-purple-300 bg-purple-50/50 px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 transition"
+        >
+          📋 Add to List
+        </button>
 
-        <div id="sheet-tags" class="flex flex-wrap gap-2 pb-20 text-[11px] text-slate-200"></div>
+        <div id="sheet-tags" class="flex flex-wrap gap-2 pb-20 text-[11px] text-gray-700"></div>
+      </div>
+    </div>
+
+    <!-- List Selection Modal -->
+    <div id="list-modal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/20 backdrop-blur-sm">
+      <div class="relative max-h-[80vh] w-full max-w-md overflow-hidden rounded-3xl border border-purple-100/50 bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+          <h3 class="text-lg font-semibold text-gray-900">Save to List</h3>
+          <button id="list-modal-close" class="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">✕</button>
+        </div>
+        <div class="max-h-[60vh] overflow-y-auto px-6 py-4">
+          <div id="existing-lists" class="space-y-2 mb-4"></div>
+          <button id="create-new-list-btn" class="w-full rounded-full border-2 border-dashed border-purple-300 bg-purple-50/50 px-4 py-3 text-sm font-medium text-purple-700 hover:bg-purple-50 transition">
+            + Create New List
+          </button>
+        </div>
+        <div id="create-list-form" class="hidden border-t border-gray-200 px-6 py-4">
+          <input type="text" id="new-list-name" placeholder="List name (e.g., Favorite Mexican Places)" class="w-full rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-200" />
+          <div class="mt-3 flex gap-2">
+            <button id="save-list-btn" class="flex-1 rounded-full bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700">Create & Save</button>
+            <button id="cancel-list-btn" class="rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -344,9 +700,19 @@
       const sheetSources = document.getElementById("sheet-sources");
       const sheetBest = document.getElementById("sheet-best");
       const sheetLike = document.getElementById("sheet-like");
-      const sheetPass = document.getElementById("sheet-pass");
+      const sheetDislike = document.getElementById("sheet-dislike");
+      const sheetAddToList = document.getElementById("sheet-add-to-list");
+      const listModal = document.getElementById("list-modal");
+      const listModalClose = document.getElementById("list-modal-close");
+      const existingLists = document.getElementById("existing-lists");
+      const createNewListBtn = document.getElementById("create-new-list-btn");
+      const createListForm = document.getElementById("create-list-form");
+      const newListNameInput = document.getElementById("new-list-name");
+      const saveListBtn = document.getElementById("save-list-btn");
+      const cancelListBtn = document.getElementById("cancel-list-btn");
+      
+      let CURRENT_PLACE_TO_SAVE = null;
       const backdrop = document.getElementById("atmo-backdrop");
-      const orbEl = document.getElementById("atmo-orb");
 
       const SAMPLE_VENUES = [
         {
@@ -371,31 +737,106 @@
         console.warn(msg);
       }
 
+      // sort venues by rating (highest to lowest)
+      function sortVenuesByRating(venues) {
+        return [...venues].sort((a, b) => {
+          const ratingA = a.google_rating || 0;
+          const ratingB = b.google_rating || 0;
+          // highest rating first (descending order)
+          return ratingB - ratingA;
+        });
+      }
+
       function renderList(venues) {
+        // sort venues by rating before rendering
+        const sortedVenues = sortVenuesByRating(venues);
         listEl.innerHTML = "";
-        venues.forEach((v) => {
+        sortedVenues.forEach((v) => {
           const card = document.createElement("article");
           card.className =
-            "group overflow-hidden rounded-3xl border border-white/5 bg-slate-950/30 hover:bg-slate-950/60 transition cursor-pointer";
+            "group overflow-hidden rounded-3xl border border-purple-100/60 bg-white/80 hover:bg-white hover:shadow-md transition cursor-pointer shadow-sm backdrop-blur-sm";
           card.innerHTML = `
-            <div class="relative h-40 overflow-hidden bg-slate-900/40">
-              <img src="${(v.photos && v.photos[0]) || ""}" alt="${
-            v.name
-          }" class="h-full w-full object-cover transition group-hover:scale-[1.03]" />
-              <span class="absolute left-3 top-3 rounded-full bg-slate-950/70 px-2 py-1 text-[10px] text-slate-100/80">${
+            <div class="relative h-40 overflow-hidden bg-gray-100">
+              <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[10px] text-gray-900 font-medium shadow-sm">${
                 v.google_rating ? v.google_rating.toFixed(1) + "★ Google" : "No rating"
               }</span>
             </div>
             <div class="space-y-2 p-4">
-              <h3 class="text-sm font-semibold text-white">${v.name}</h3>
-              <p class="text-xs text-slate-400">${v.address || "—"}</p>
-              <p class="line-clamp-2 text-xs text-slate-200/90">${v.summary || "Atmosphere is building this vibe…"}</p>
+              <h3 class="text-sm font-semibold text-gray-900">${v.name}</h3>
+              <p class="text-xs text-gray-600">${v.address || "—"}</p>
+              <p class="line-clamp-2 text-xs text-gray-700">${v.summary || "Atmosphere is building this vibe…"}</p>
             </div>
           `;
           card.addEventListener("click", () => openSheet(v));
           listEl.appendChild(card);
+          
+          const imgContainer = card.querySelector(".relative");
+          const loadPhoto = (photoUrl) => {
+            if (!photoUrl || !imgContainer) return;
+            const img = document.createElement("img");
+            img.src = photoUrl;
+            img.alt = v.name;
+            img.className = "card-img h-full w-full object-cover transition group-hover:scale-[1.03]";
+            img.onerror = function() { 
+              this.remove(); 
+              // try next photo if available
+              if (v.photos && v.photos.length > 1 && v.photos.indexOf(photoUrl) < v.photos.length - 1) {
+                const nextIdx = v.photos.indexOf(photoUrl) + 1;
+                if (v.photos[nextIdx]) {
+                  loadPhoto(v.photos[nextIdx]);
+                }
+              }
+            };
+            // insert before rating span
+            const ratingSpan = imgContainer.querySelector("span");
+            if (ratingSpan) {
+              imgContainer.insertBefore(img, ratingSpan);
+            } else {
+              imgContainer.appendChild(img);
+            }
+          };
+          
+          // try initial photo if available
+          const hasValidPhoto = v.photos && Array.isArray(v.photos) && v.photos.length > 0 && 
+                                v.photos[0] && typeof v.photos[0] === 'string' && v.photos[0].trim().length > 0;
+          if (hasValidPhoto) {
+            loadPhoto(v.photos[0]);
+          }
+          
+          // always fetch photos to ensure we have them
+          if (v.id) {
+            fetch(`${BASE_URL}/places/${encodeURIComponent(v.id)}/photos`)
+              .then(r => (r.ok ? r.json() : { photos: [] }))
+              .then(j => {
+                if (j && Array.isArray(j.photos) && j.photos.length) {
+                  const validPhotos = j.photos.filter(p => p && typeof p === 'string' && p.trim().length > 0);
+                  if (validPhotos.length > 0) {
+                    // update venue object
+                    v.photos = validPhotos;
+                    // check if image already exists
+                    const existingImg = imgContainer.querySelector("img");
+                    if (!existingImg) {
+                      // no image yet, load first photo
+                      loadPhoto(validPhotos[0]);
+                    } else {
+                      // image exists, update it if it's broken
+                      existingImg.onerror = function() {
+                        this.remove();
+                        loadPhoto(validPhotos[0]);
+                      };
+                      // check if current image is broken
+                      if (existingImg.complete && existingImg.naturalWidth === 0) {
+                        existingImg.remove();
+                        loadPhoto(validPhotos[0]);
+                      }
+                    }
+                  }
+                }
+              })
+              .catch(() => {});
+          }
         });
-        resultCountEl.textContent = `${venues.length} places found`;
+        resultCountEl.textContent = `${sortedVenues.length} places found`;
       }
 
       function closeSheet() {
@@ -409,9 +850,14 @@
       backdrop.addEventListener("click", closeSheet);
 
       function openSheet(v) {
-        // photos
+        // photos - filter out empty/invalid URLs
         const fallback = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=60";
-        let photos = (v.photos && v.photos.length ? [...v.photos] : [fallback]);
+        const filterValidPhotos = (photoArray) => {
+          if (!photoArray || !Array.isArray(photoArray)) return [];
+          return photoArray.filter(p => p && typeof p === 'string' && p.trim().length > 0);
+        };
+        let photos = filterValidPhotos(v.photos);
+        if (photos.length === 0) photos = [fallback];
         let currentIdx = 0;
         let carousel, prevBtn, nextBtn;
 
@@ -423,7 +869,10 @@
 
         const renderHero = () => {
           const slides = photos
-            .map((src) => `<div class="slide"><img src="${src}" alt="${v.name}" /></div>`) 
+            .map((src, idx) => {
+              const slideId = `slide-${idx}`;
+              return `<div class="slide" id="${slideId}"><img src="${src}" alt="${v.name}" /></div>`;
+            })
             .join("");
           sheetHero.innerHTML = `
             <div class="carousel" id="sheet-carousel">${slides}</div>
@@ -434,6 +883,28 @@
           carousel = document.getElementById("sheet-carousel");
           prevBtn = document.getElementById("nav-prev");
           nextBtn = document.getElementById("nav-next");
+          
+          // add error handlers to images - remove broken ones
+          const slideImages = carousel.querySelectorAll("img");
+          slideImages.forEach((img, idx) => {
+            img.addEventListener("error", function() {
+              // remove broken photo from array
+              const brokenIdx = idx;
+              if (brokenIdx < photos.length && photos[brokenIdx] === this.src) {
+                photos.splice(brokenIdx, 1);
+                // if we removed the current photo, adjust index
+                if (brokenIdx === currentIdx) {
+                  currentIdx = Math.max(0, Math.min(currentIdx, photos.length - 1));
+                } else if (brokenIdx < currentIdx) {
+                  currentIdx = Math.max(0, currentIdx - 1);
+                }
+                // re-render with fixed photos
+                renderHero();
+                renderThumbs();
+                scrollToIdx(currentIdx, "auto");
+              }
+            }, { once: true });
+          });
 
           // initial position (instant)
           scrollToIdx(currentIdx, "auto");
@@ -471,7 +942,15 @@
           photos.forEach((p, idx) => {
             const t = document.createElement("div");
             t.className = `thumb flex-shrink-0 ${idx === currentIdx ? "selected" : ""}`;
-            t.innerHTML = `<img src="${p}" alt="${v.name} ${idx + 1}" />`;
+            const img = document.createElement("img");
+            img.src = p;
+            img.alt = `${v.name} ${idx + 1}`;
+            img.onerror = function() {
+              // hide broken thumbnail images
+              this.style.display = 'none';
+              t.style.backgroundColor = 'rgba(0,0,0,0.3)';
+            };
+            t.appendChild(img);
             t.addEventListener("click", () => {
               currentIdx = idx;
               scrollToIdx(currentIdx, "auto"); // instant snap on thumbnail click
@@ -491,7 +970,7 @@
             if (j && Array.isArray(j.photos) && j.photos.length) {
               // merge unique photos keeping order; avoid duplicates
               const existing = new Set(photos);
-              const extras = j.photos.filter(p => !existing.has(p));
+              const extras = filterValidPhotos(j.photos).filter(p => !existing.has(p));
               if (extras.length) {
                 photos = [...photos, ...extras];
                 // re-render with new photos; keep currentIdx stable
@@ -507,11 +986,15 @@
         // text
         sheetName.textContent = v.name;
         sheetAddr.textContent = v.address || "—";
-        sheetSummary.textContent =
-          v.summary ||
-          (v.reviews && v.reviews.length
-            ? v.reviews[0].text
-            : "Neutral spot — depends on time of day. Good for casual meetups and solo coffee.");
+        if (v.summary) {
+          sheetSummary.textContent = v.summary;
+          sheetSummary.style.display = "block";
+        } else if (v.reviews && v.reviews.length && v.reviews[0].text) {
+          sheetSummary.textContent = v.reviews[0].text;
+          sheetSummary.style.display = "block";
+        } else {
+          sheetSummary.style.display = "none";
+        }
         sheetGoogle.textContent = v.google_rating ? `${v.google_rating.toFixed(1)}★` : "—";
         sheetSources.textContent = `+${v.source_count || (v.reviews ? v.reviews.length : 0) || 1} signals`;
         sheetBest.textContent = (v.tags && v.tags.slice(0, 2).join(", ")) || "Good vibe";
@@ -539,12 +1022,12 @@
         // Render rows
         detailRows.innerHTML = rows
           .map(r => {
-            const link = r.link ? `<a href="${r.link}" target="_blank" class="text-cyan-300 hover:underline">${r.linkText || "Open"}</a>` : "";
+            const link = r.link ? `<a href="${r.link}" target="_blank" class="text-blue-600 hover:underline">${r.linkText || "Open"}</a>` : "";
             return `<div class="detail-row">
               <div class="detail-icon">${r.icon}</div>
               <div class="text-sm">
-                <div class="text-slate-400">${r.label}</div>
-                <div class="text-slate-200">${r.value} ${link ? `• ${link}` : ""}</div>
+                <div class="text-gray-600">${r.label}</div>
+                <div class="text-gray-900">${r.value} ${link ? `• ${link}` : ""}</div>
               </div>
             </div>`;
           })
@@ -559,7 +1042,7 @@
         sheetTags.innerHTML = (v.tags || [])
           .map(
             (t) =>
-              `<span class="rounded-full bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100/80">${t}</span>`
+              `<span class="rounded-full bg-gray-100 px-3 py-1 text-[10px] text-gray-700">${t}</span>`
           )
           .join("");
         if (v.reviews && v.reviews.length) {
@@ -581,8 +1064,21 @@
         backdrop.classList.remove("hidden");
         backdrop.classList.add("show");
 
-        // like/pass
+        // like/dislike - save to profile
         sheetLike.onclick = async () => {
+          // Save to user's likes
+          const likes = JSON.parse(localStorage.getItem("atmosphere_likes") || "[]");
+          if (!likes.some(p => p.id === v.id)) {
+            likes.push({
+              id: v.id,
+              name: v.name,
+              address: v.address,
+              google_rating: v.google_rating,
+              likedAt: new Date().toISOString()
+            });
+            localStorage.setItem("atmosphere_likes", JSON.stringify(likes));
+          }
+          
           try {
             await fetch(`${BASE_URL}/ratings`, {
               method: "POST",
@@ -592,7 +1088,20 @@
           } catch (e) {}
           closeSheet();
         };
-        sheetPass.onclick = async () => {
+        sheetDislike.onclick = async () => {
+          // Save to user's dislikes
+          const dislikes = JSON.parse(localStorage.getItem("atmosphere_dislikes") || "[]");
+          if (!dislikes.some(p => p.id === v.id)) {
+            dislikes.push({
+              id: v.id,
+              name: v.name,
+              address: v.address,
+              google_rating: v.google_rating,
+              dislikedAt: new Date().toISOString()
+            });
+            localStorage.setItem("atmosphere_dislikes", JSON.stringify(dislikes));
+          }
+          
           try {
             await fetch(`${BASE_URL}/ratings`, {
               method: "POST",
@@ -601,6 +1110,12 @@
             });
           } catch (e) {}
           closeSheet();
+        };
+        // add to list - opens list modal
+        sheetAddToList.onclick = () => {
+          CURRENT_PLACE_TO_SAVE = v;
+          renderLists();
+          listModal.classList.remove("hidden");
         };
       }
 
@@ -626,6 +1141,9 @@
         fetchPlaces(USER_LAT, USER_LNG, radius, "").then((venues) => {
           CURRENT_VENUES = venues;
           renderList(venues);
+          if (map && !mapPage.classList.contains("hidden")) {
+            updateMapMarkers();
+          }
         });
 
         // now try real geolocation
@@ -638,6 +1156,9 @@
               const venues = await fetchPlaces(USER_LAT, USER_LNG, r, "");
               CURRENT_VENUES = venues;
               renderList(venues);
+              if (map && !mapPage.classList.contains("hidden")) {
+                updateMapMarkers();
+              }
               showError("");
             },
             () => {
@@ -648,38 +1169,566 @@
         }
       }
 
-      // search
-      let searchTimeout = null;
-      searchInput.addEventListener("input", () => {
-        const q = searchInput.value;
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(async () => {
-          const radius = parseInt(radiusSelect.value, 10) || 5000;
-          const venues = await fetchPlaces(USER_LAT, USER_LNG, radius, q);
-          CURRENT_VENUES = venues;
-          renderList(venues);
-        }, 400);
+      // search - only on Enter key or search button click
+      async function performSearch() {
+        const q = searchInput.value.trim();
+        const radius = parseInt(radiusSelect.value, 10) || 5000;
+        
+        showLoader();
+        const venues = await fetchPlaces(USER_LAT, USER_LNG, radius, q);
+        CURRENT_VENUES = venues;
+        renderList(venues);
+        if (map && !mapPage.classList.contains("hidden")) {
+          updateMapMarkers();
+        }
+        hideLoader();
+      }
+      
+      // Search on Enter key
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          performSearch();
+        }
       });
+      
+      // Search button
+      const searchBtn = document.getElementById("search-btn");
+      if (searchBtn) {
+        searchBtn.addEventListener("click", performSearch);
+      }
 
       // radius
       radiusSelect.addEventListener("change", async () => {
         const q = searchInput.value || "";
         const radius = parseInt(radiusSelect.value, 10) || 5000;
+        showLoader();
         const venues = await fetchPlaces(USER_LAT, USER_LNG, radius, q);
         CURRENT_VENUES = venues;
         renderList(venues);
+        hideLoader();
       });
 
-      // orb movement
-      window.addEventListener("scroll", () => {
-        const scrollY = window.scrollY || document.documentElement.scrollTop;
-        const s = 1 + Math.min(scrollY / 1200, 0.12);
-        const rot = scrollY * 0.04;
-        if (orbEl) {
-          orbEl.style.transform = `scale(${s}) rotate(${rot}deg)`;
+      
+      // reveal content on page load with smooth transition
+      function revealContent() {
+        const header = document.querySelector("header");
+        const main = document.querySelector("main.landing-content");
+        const sections = document.querySelectorAll("section");
+        
+        // reveal header
+        if (header) {
+          setTimeout(() => {
+            header.classList.add("reveal");
+          }, 100);
+        }
+        
+        // reveal main content
+        setTimeout(() => {
+          if (main) {
+            main.classList.add("reveal");
+          }
+          
+          // reveal sections with staggered delays
+          sections.forEach((section, idx) => {
+            setTimeout(() => {
+              section.classList.add("reveal");
+            }, 300 + (idx * 150));
+          });
+        }, 150);
+      }
+      
+      // reveal content on page load
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', revealContent);
+      } else {
+        revealContent();
+      }
+      
+      // browse vibes page
+      const browsePage = document.getElementById("browse-page");
+      const browseBtn = document.getElementById("browse-vibes-btn");
+      const browseClose = document.getElementById("browse-close");
+      const foodOptions = document.querySelectorAll(".food-option");
+      
+      function openBrowsePage() {
+        if (browsePage) {
+          browsePage.classList.add("show");
+        }
+      }
+      
+      function closeBrowsePage() {
+        if (browsePage) {
+          browsePage.classList.remove("show");
+        }
+      }
+      
+      if (browseBtn) {
+        browseBtn.addEventListener("click", openBrowsePage);
+      }
+      
+      if (browseClose) {
+        browseClose.addEventListener("click", closeBrowsePage);
+      }
+      
+      // List management functions
+      function getLists() {
+        const listsJson = localStorage.getItem("atmosphere_lists");
+        return listsJson ? JSON.parse(listsJson) : {};
+      }
+      
+      function saveLists(lists) {
+        localStorage.setItem("atmosphere_lists", JSON.stringify(lists));
+      }
+      
+      function renderLists() {
+        const lists = getLists();
+        existingLists.innerHTML = "";
+        
+        if (Object.keys(lists).length === 0) {
+          existingLists.innerHTML = '<p class="text-sm text-gray-500 text-center py-4">No lists yet. Create one below!</p>';
+          return;
+        }
+        
+        Object.entries(lists).forEach(([listId, listData]) => {
+          const listItem = document.createElement("button");
+          listItem.className = "w-full text-left rounded-2xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50 transition text-sm";
+          listItem.innerHTML = `
+            <div class="font-medium text-gray-900">${listData.name}</div>
+            <div class="text-xs text-gray-500 mt-1">${listData.places?.length || 0} places</div>
+          `;
+          listItem.onclick = () => {
+            savePlaceToList(listId);
+          };
+          existingLists.appendChild(listItem);
+        });
+      }
+      
+      function savePlaceToList(listId) {
+        if (!CURRENT_PLACE_TO_SAVE) return;
+        
+        const lists = getLists();
+        if (!lists[listId]) {
+          lists[listId] = { name: listId, places: [] };
+        }
+        
+        // Check if place already in list
+        const placeExists = lists[listId].places.some(p => p.id === CURRENT_PLACE_TO_SAVE.id);
+        if (!placeExists) {
+          lists[listId].places.push({
+            id: CURRENT_PLACE_TO_SAVE.id,
+            name: CURRENT_PLACE_TO_SAVE.name,
+            address: CURRENT_PLACE_TO_SAVE.address,
+            google_rating: CURRENT_PLACE_TO_SAVE.google_rating,
+            savedAt: new Date().toISOString()
+          });
+          saveLists(lists);
+        }
+        
+        listModal.classList.add("hidden");
+        closeSheet();
+        CURRENT_PLACE_TO_SAVE = null;
+      }
+      
+      function createNewList() {
+        const name = newListNameInput.value.trim();
+        if (!name) return;
+        
+        const lists = getLists();
+        const listId = `list_${Date.now()}`;
+        lists[listId] = { name, places: [] };
+        saveLists(lists);
+        
+        // Save the current place to the new list
+        lists[listId].places.push({
+          id: CURRENT_PLACE_TO_SAVE.id,
+          name: CURRENT_PLACE_TO_SAVE.name,
+          address: CURRENT_PLACE_TO_SAVE.address,
+          google_rating: CURRENT_PLACE_TO_SAVE.google_rating,
+          savedAt: new Date().toISOString()
+        });
+        saveLists(lists);
+        
+        newListNameInput.value = "";
+        createListForm.classList.add("hidden");
+        listModal.classList.add("hidden");
+        closeSheet();
+        CURRENT_PLACE_TO_SAVE = null;
+      }
+      
+      // List modal event handlers
+      listModalClose.onclick = () => {
+        listModal.classList.add("hidden");
+        createListForm.classList.add("hidden");
+        CURRENT_PLACE_TO_SAVE = null;
+      };
+      
+      createNewListBtn.onclick = () => {
+        createListForm.classList.remove("hidden");
+        newListNameInput.focus();
+      };
+      
+      cancelListBtn.onclick = () => {
+        createListForm.classList.add("hidden");
+        newListNameInput.value = "";
+      };
+      
+      saveListBtn.onclick = createNewList;
+      
+      newListNameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          createNewList();
         }
       });
+      
+      // Close modal when clicking backdrop
+      listModal.onclick = (e) => {
+        if (e.target === listModal) {
+          listModal.classList.add("hidden");
+          createListForm.classList.add("hidden");
+          CURRENT_PLACE_TO_SAVE = null;
+        }
+      };
+      
+      // handle food option clicks
+      foodOptions.forEach(option => {
+        option.addEventListener("click", function() {
+          const foodType = this.getAttribute("data-food");
+          // temporarily select the option
+          foodOptions.forEach(opt => opt.classList.remove("selected"));
+          this.classList.add("selected");
+          
+          // Show loading animation
+          showLoader();
+          
+          // close browse page and update search
+          setTimeout(() => {
+            closeBrowsePage();
+            // update search input with food type
+            const searchInput = document.getElementById("search-input");
+            if (searchInput) {
+              searchInput.value = foodType;
+              // Trigger search using the new performSearch function
+              performSearch();
+            }
+          }, 200);
+        });
+      });
 
+      // Show/hide loading overlay
+      function showLoader() {
+        const loader = document.getElementById("loading-overlay");
+        if (loader) {
+          loader.classList.remove("hidden");
+        }
+      }
+      function hideLoader() {
+        const loader = document.getElementById("loading-overlay");
+        if (loader) {
+          loader.classList.add("hidden");
+        }
+      }
+      
+      // Hide loader after a short delay to ensure smooth transition
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          setTimeout(hideLoader, 300);
+        });
+      } else {
+        setTimeout(hideLoader, 300);
+      }
+      
+      // Map functionality
+      let map = null;
+      let mapMarkers = [];
+      let currentMapFilter = "all";
+      let mapsApiLoaded = false;
+      
+      const mapPage = document.getElementById("map-page");
+      const mapContainer = document.getElementById("map-container");
+      const mapClose = document.getElementById("map-close");
+      const navMap = document.getElementById("nav-map");
+      const navDiscover = document.getElementById("nav-discover");
+      const mapFilterBtns = document.querySelectorAll(".map-filter-btn");
+      const mapInfo = document.getElementById("map-info");
+      
+      async function loadMapsAPI() {
+        if (mapsApiLoaded || (typeof google !== 'undefined' && google.maps)) {
+          mapsApiLoaded = true;
+          return Promise.resolve();
+        }
+        
+        try {
+          const res = await fetch(`${BASE_URL}/config/maps-key`);
+          if (!res.ok) {
+            throw new Error(`Failed to get maps key: ${res.statusText}`);
+          }
+          const data = await res.json();
+          const mapsKey = data.maps_key;
+          
+          if (!mapsKey) {
+            throw new Error('Maps API key not available');
+          }
+          
+          return new Promise((resolve, reject) => {
+            let resolved = false;
+            let timeoutId = null;
+            
+            // Set up global callback for Google Maps
+            window.initGoogleMaps = () => {
+              if (resolved) return;
+              resolved = true;
+              mapsApiLoaded = true;
+              if (timeoutId) clearTimeout(timeoutId);
+              delete window.initGoogleMaps;
+              // Give it a moment to ensure google.maps is fully initialized
+              setTimeout(() => resolve(), 100);
+            };
+            
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}&libraries=places&callback=initGoogleMaps`;
+            script.async = true;
+            script.defer = true;
+            
+            script.onerror = () => {
+              if (resolved) return;
+              resolved = true;
+              if (timeoutId) clearTimeout(timeoutId);
+              if (window.initGoogleMaps) delete window.initGoogleMaps;
+              reject(new Error('Failed to load Google Maps script'));
+            };
+            
+            // Timeout after 15 seconds
+            timeoutId = setTimeout(() => {
+              if (resolved) return;
+              resolved = true;
+              if (window.initGoogleMaps) delete window.initGoogleMaps;
+              reject(new Error('Google Maps API load timeout - check API key and enable Maps JavaScript API'));
+            }, 15000);
+            
+            document.head.appendChild(script);
+          });
+        } catch (error) {
+          console.error('Failed to load Google Maps API:', error);
+          if (mapInfo) {
+            mapInfo.textContent = 'Failed to load map. Please check your API key settings.';
+          }
+          throw error;
+        }
+      }
+      
+      function initMap() {
+        if (!mapContainer || map) return;
+        
+        const defaultCenter = USER_LAT && USER_LNG 
+          ? { lat: USER_LAT, lng: USER_LNG }
+          : { lat: 43.6591, lng: -70.2568 }; // Portland, ME default
+        
+        map = new google.maps.Map(mapContainer, {
+          center: defaultCenter,
+          zoom: 13,
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }]
+            }
+          ],
+          mapTypeControl: false,
+          fullscreenControl: true,
+          streetViewControl: false
+        });
+        
+        // Update map when user location is available
+        if (USER_LAT && USER_LNG) {
+          map.setCenter({ lat: USER_LAT, lng: USER_LNG });
+        }
+        
+        updateMapMarkers();
+      }
+      
+      function updateMapMarkers() {
+        if (!map || !CURRENT_VENUES) return;
+        
+        // Clear existing markers
+        mapMarkers.forEach(marker => marker.setMap(null));
+        mapMarkers = [];
+        
+        // Use all current venues (they're already filtered by the backend search)
+        // No additional client-side filtering needed - backend handles it
+        let filteredVenues = CURRENT_VENUES;
+        
+        // Add markers for filtered venues
+        filteredVenues.forEach(venue => {
+          if (!venue.lat || !venue.lng) return;
+          
+          const marker = new google.maps.Marker({
+            position: { lat: venue.lat, lng: venue.lng },
+            map: map,
+            title: venue.name,
+            icon: {
+              url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
+                <svg width="32" height="40" viewBox="0 0 32 40" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M16 0 C10 0, 5 5, 5 11 C5 19, 16 40, 16 40 C16 40, 27 19, 27 11 C27 5, 22 0, 16 0 Z" fill="#6366f1" stroke="#fff" stroke-width="1"/>
+                  <circle cx="16" cy="11" r="4" fill="#fff"/>
+                </svg>
+              `),
+              scaledSize: new google.maps.Size(32, 40),
+              anchor: new google.maps.Point(16, 40)
+            }
+          });
+          
+          // Info window
+          const infoWindow = new google.maps.InfoWindow({
+            content: `
+              <div style="padding: 8px; min-width: 150px;">
+                <h3 style="font-weight: 600; margin-bottom: 4px; font-size: 14px;">${venue.name}</h3>
+                <p style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">${venue.address || ""}</p>
+                ${venue.google_rating ? `<p style="font-size: 12px; color: #6366f1;">${venue.google_rating.toFixed(1)}★</p>` : ""}
+              </div>
+            `
+          });
+          
+          marker.addListener("click", () => {
+            infoWindow.open(map, marker);
+            // Also open the detail sheet
+            openSheet(venue);
+          });
+          
+          mapMarkers.push(marker);
+        });
+        
+        // Update info text
+        if (mapInfo) {
+          mapInfo.textContent = `Showing ${filteredVenues.length} restaurant${filteredVenues.length !== 1 ? 's' : ''}`;
+        }
+        
+        // Fit bounds to show all markers
+        if (filteredVenues.length > 0) {
+          const bounds = new google.maps.LatLngBounds();
+          filteredVenues.forEach(v => {
+            if (v.lat && v.lng) {
+              bounds.extend({ lat: v.lat, lng: v.lng });
+            }
+          });
+          if (filteredVenues.length > 1) {
+            map.fitBounds(bounds);
+          } else if (filteredVenues.length === 1) {
+            map.setCenter({ lat: filteredVenues[0].lat, lng: filteredVenues[0].lng });
+            map.setZoom(15);
+          }
+        }
+      }
+      
+      async function openMapPage() {
+        if (!mapPage) return;
+        
+        mapPage.classList.remove("hidden");
+        
+        // Load Maps API if needed
+        if (!mapsApiLoaded) {
+          try {
+            await loadMapsAPI();
+          } catch (error) {
+            console.error('Error loading maps:', error);
+            if (mapInfo) {
+              mapInfo.textContent = 'Error loading map. Please check the console for details.';
+            }
+            return;
+          }
+        }
+        
+        // Wait a bit for Google Maps to be fully ready
+        if (typeof google === 'undefined' || !google.maps) {
+          if (mapInfo) {
+            mapInfo.textContent = 'Loading map...';
+          }
+          // Retry after a short delay
+          setTimeout(() => {
+            if (typeof google !== 'undefined' && google.maps && !map) {
+              initMap();
+            }
+          }, 500);
+          return;
+        }
+        
+        if (!map) {
+          initMap();
+        } else {
+          updateMapMarkers();
+        }
+        
+        // Update nav buttons
+        if (navDiscover) {
+          navDiscover.classList.remove("bg-white/90", "shadow-sm", "text-gray-900");
+          navDiscover.classList.add("text-gray-600");
+        }
+        if (navMap) {
+          navMap.classList.add("bg-white/90", "shadow-sm", "text-gray-900");
+          navMap.classList.remove("text-gray-600");
+        }
+      }
+      
+      function closeMapPage() {
+        if (!mapPage) return;
+        
+        mapPage.classList.add("hidden");
+        
+        // Update nav buttons
+        if (navMap) {
+          navMap.classList.remove("bg-white/90", "shadow-sm", "text-gray-900");
+          navMap.classList.add("text-gray-600");
+        }
+        if (navDiscover) {
+          navDiscover.classList.add("bg-white/90", "shadow-sm", "text-gray-900");
+          navDiscover.classList.remove("text-gray-600");
+        }
+      }
+      
+      // Map event handlers
+      if (navMap) {
+        navMap.addEventListener("click", openMapPage);
+      }
+      
+      if (navDiscover) {
+        navDiscover.addEventListener("click", closeMapPage);
+      }
+      
+      if (mapClose) {
+        mapClose.addEventListener("click", closeMapPage);
+      }
+      
+      // Map filter handlers
+      mapFilterBtns.forEach(btn => {
+        btn.addEventListener("click", async function() {
+          // Update active state
+          mapFilterBtns.forEach(b => b.classList.remove("active"));
+          this.classList.add("active");
+          
+          // Update filter
+          currentMapFilter = this.getAttribute("data-filter");
+          
+          // If filter is not "all", perform a search for that food type
+          if (currentMapFilter !== "all") {
+            showLoader();
+            const radius = parseInt(radiusSelect.value, 10) || 5000;
+            const venues = await fetchPlaces(USER_LAT, USER_LNG, radius, currentMapFilter);
+            CURRENT_VENUES = venues;
+            hideLoader();
+          } else {
+            // For "all", fetch all restaurants without filter
+            showLoader();
+            const radius = parseInt(radiusSelect.value, 10) || 5000;
+            const venues = await fetchPlaces(USER_LAT, USER_LNG, radius, "");
+            CURRENT_VENUES = venues;
+            hideLoader();
+          }
+          
+          // Update map markers with the search results (already filtered by backend)
+          updateMapMarkers();
+        });
+      });
+      
       initApp();
     </script>
   </body>
